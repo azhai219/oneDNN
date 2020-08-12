@@ -188,7 +188,11 @@ inline int dnnl_get_current_num_threads() {
 // * For MSVC as it only supports OpenMP 2.0
 // * In debug mode on Windows to avoid incorrect code generation
 //   by Intel(R) oneAPI DPC++/C++ Compiler
-#if defined(_MSC_VER) \
+/* MSVC still supports omp 2.0 only,
+   however VS2019 also now offers SIMD functionality
+   with the -openmp:experimental compilation switch that enables additional OpenMP features
+   not available when using the -openmp switch */
+#if defined(_MSC_VER) && (_MSC_VER < 1900) \
         && ((!defined(__clang__) && !defined(__INTEL_COMPILER)) \
                 || defined(_DEBUG))
 #define collapse(x)
