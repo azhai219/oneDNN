@@ -44,11 +44,13 @@ static inline dim_t get_offset(const memory_desc_wrapper &mdw, dim_t n, dim_t c,
 
 using namespace nstl;
 
-status_t ref_pooling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
+template <data_type_t src_type, data_type_t dst_type, data_type_t acc_type>
+status_t ref_pooling_fwd_t<src_type, dst_type, acc_type>::execute_forward(
+        const exec_ctx_t &ctx) const {
 
     status_t status = status::success;
-    auto src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
-    auto dst = CTX_OUT_CLEAN_MEM(void *, DNNL_ARG_DST, status);
+    auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
+    auto dst = CTX_OUT_CLEAN_MEM(dst_data_t *, DNNL_ARG_DST, status);
     CHECK(status);
     auto ws = CTX_OUT_CLEAN_MEM(unsigned char *, DNNL_ARG_WORKSPACE, status);
     CHECK(status);
@@ -171,8 +173,7 @@ status_t ref_pooling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     const bool is_max_pool = alg == alg_kind::pooling_max;
 
     float base_res
-            = is_max_pool ? types::lowest_value<float>(dst_d.data_type()) : 0.f;
-
+            = is_max_pool ? types::lowest_value<float>(src_d.data_type()) : 0.f;
     using ker_t
             = std::function<void(float &, dim_t, dim_t, dim_t, dim_t, dim_t)>;
     ker_t kernel = is_max_pool ? (ker_t)ker_max : (ker_t)ker_avg;
@@ -371,6 +372,16 @@ status_t ref_pooling_bwd_t::execute(const exec_ctx_t &ctx) const {
     return status::success;
 }
 
+template struct ref_pooling_fwd_t<data_type::f32, data_type::f32, data_type::f32>;
+template struct ref_pooling_fwd_t<data_type::s32, data_type::s32, data_type::s32>;
+template struct ref_pooling_fwd_t<data_type::bf16, data_type::bf16, data_type::f32>;
+template struct ref_pooling_fwd_t<data_type::f16, data_type::f16,data_type::f32>;
+template struct ref_pooling_fwd_t<data_type::f8_e5m2, data_type::f8_e5m2, data_type::f32>;
+template struct ref_pooling_fwd_t<data_type::f8_e4m3, data_type::f8_e4m3, data_type::f32>;
+template struct ref_pooling_fwd_t<data_type::s8, data_type::s8, data_type::s32>;
+template struct ref_pooling_fwd_t<data_type::u8, data_type::u8, data_type::s32>;
+template struct ref_pooling_fwd_t<data_type::s8, data_type::f32, data_type::f32>;
+template struct ref_pooling_fwd_t<data_type::u8, data_type::f32, data_type::f32>;
 } // namespace cpu
 } // namespace impl
 } // namespace dnnl
