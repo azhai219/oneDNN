@@ -134,14 +134,12 @@ struct jit_uni_dw_convolution_bwd_data_t : public primitive_t {
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
             VDISPATCH_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
-            VDISPATCH_CONV(
-                    attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
 
             // TODO: make `init_conf` assign initialized object to `jcp_`
             using jit_uni_dw_conv_bwd_data_kernel_inst
                     = jit_uni_dw_conv_bwd_data_kernel<isa, diff_dst_type>;
             CHECK(jit_uni_dw_conv_bwd_data_kernel_inst::init_conf(
-                    jcp_, *desc(), diff_src_md_, weights_md_, diff_dst_md_));
+                    jcp_, *desc(), diff_src_md_, weights_md_, diff_dst_md_, attr_));
 
             auto scratchpad = scratchpad_registry().registrar();
             jit_uni_dw_conv_bwd_data_kernel<isa,
@@ -162,7 +160,7 @@ struct jit_uni_dw_convolution_bwd_data_t : public primitive_t {
     status_t init(engine_t *engine) override {
         CHECK(safe_ptr_assign(kernel_,
                 new jit_uni_dw_conv_bwd_data_kernel<isa, diff_dst_type>(
-                        pd()->jcp_)));
+                        pd()->jcp_, *pd()->attr())));
         return kernel_->create_kernel();
     }
 

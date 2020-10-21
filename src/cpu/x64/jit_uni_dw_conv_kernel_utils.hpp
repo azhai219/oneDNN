@@ -72,8 +72,8 @@ private:
 template <cpu_isa_t isa, data_type_t kernel_dt>
 struct jit_uni_dw_conv_bwd_data_kernel {
 
-    jit_uni_dw_conv_bwd_data_kernel(const jit_conv_conf_t &ajcp)
-        : ker_(utils::make_unique<jit_kernel_t>(ajcp)) {}
+    jit_uni_dw_conv_bwd_data_kernel(const jit_conv_conf_t &ajcp, const primitive_attr_t &attr)
+        : ker_(utils::make_unique<jit_kernel_t>(ajcp, attr)) {}
 
     status_t create_kernel() {
         if (ker_) return ker_->create_kernel();
@@ -81,9 +81,12 @@ struct jit_uni_dw_conv_bwd_data_kernel {
     }
     ~jit_uni_dw_conv_bwd_data_kernel() = default;
 
+    static bool post_ops_ok(const primitive_attr_t &attr);
+
     static status_t init_conf(jit_conv_conf_t &jcp,
             const convolution_desc_t &cd, memory_desc_t &diff_src_md,
-            memory_desc_t &weights_md, memory_desc_t &diff_dst_md);
+            memory_desc_t &weights_md, memory_desc_t &diff_dst_md,
+            const primitive_attr_t &attr);
 
     static void init_scratchpad(memory_tracking::registrar_t &scratchpad,
             const jit_conv_conf_t &jcp);
