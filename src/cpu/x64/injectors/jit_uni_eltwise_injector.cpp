@@ -2986,8 +2986,8 @@ void jit_uni_eltwise_injector<isa, Wmm>::register_table_entries() {
 }
 
 template struct jit_uni_eltwise_injector<avx512_core_fp16>;
-template struct jit_uni_eltwise_injector<avx512_core_fp16, Xbyak::Ymm>;
-template struct jit_uni_eltwise_injector<avx512_core_fp16, Xbyak::Xmm>;
+template struct jit_uni_eltwise_injector<avx512_core_fp16, Ymm>;
+template struct jit_uni_eltwise_injector<avx512_core_fp16, Xmm>;
 template struct jit_uni_eltwise_injector<avx512_core_bf16>;
 template struct jit_uni_eltwise_injector<avx512_core>;
 template struct jit_uni_eltwise_injector<avx512_core, Ymm>;
