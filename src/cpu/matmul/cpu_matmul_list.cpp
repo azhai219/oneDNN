@@ -59,8 +59,8 @@ using namespace dnnl::impl::data_type;
 using namespace dnnl::impl::cpu::matmul;
 
 // clang-format off
-constexpr impl_list_item_t impl_list[] = REG_MATMUL_P({
-        CPU_INSTANCE_AARCH64(brgemm_matmul_t<sve_512>)
+const impl_list_item_t impl_list[] = REG_MATMUL_P({
+        CPU_INSTANCE_AARCH64(brgemm_matmul_t, sve_512)
         CPU_INSTANCE_AARCH64_ACL(acl_lowp_matmul_sq_t)
         CPU_INSTANCE_AARCH64_ACL(acl_lowp_matmul_t)
         CPU_INSTANCE_AARCH64_ACL(acl_matmul_t)
@@ -80,8 +80,8 @@ constexpr impl_list_item_t impl_list[] = REG_MATMUL_P({
         CPU_INSTANCE_AVX2(brgemm_matmul_t<avx2>)
         CPU_INSTANCE_RV64GCV(rvv_matmul_t)
         CPU_INSTANCE(gemm_f32_matmul_t)
-        CPU_INSTANCE(gemm_bf16_matmul_t<f32>)
-        CPU_INSTANCE(gemm_bf16_matmul_t<bf16>)
+        CPU_INSTANCE(gemm_bf16_matmul_t, f32)
+        CPU_INSTANCE(gemm_bf16_matmul_t, bf16)
         CPU_INSTANCE(gemm_x8s8s32x_matmul_t)
         CPU_INSTANCE(ref_matmul_t)
         CPU_INSTANCE(ref_matmul_int8_t)
