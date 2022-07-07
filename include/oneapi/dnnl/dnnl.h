@@ -606,9 +606,6 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_set_rounding(
 dnnl_status_t DNNL_API dnnl_primitive_attr_get_rounding(
         dnnl_primitive_attr_t attr, int arg, dnnl_rounding_mode_t *mode);
 
-dnnl_status_t DNNL_API dnnl_primitive_attr_get_output_compensations(
-        const_dnnl_primitive_attr_t attr, int *count, int *mask, const int32_t **compensations);
-
 dnnl_status_t DNNL_API dnnl_primitive_attr_set_output_compensations(
         dnnl_primitive_attr_t attr, int count, int mask);
 
