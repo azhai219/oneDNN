@@ -38,6 +38,9 @@ const impl_list_map_t &regular_s8_impl_list_map() {
 
             DNNL_AARCH64_ONLY(CPU_REORDER_INSTANCE(aarch64_jit_blk_reorder_t))
             DNNL_AARCH64_ONLY(CPU_REORDER_INSTANCE(aarch64_jit_uni_reorder_t))
+            // // TODO: move it down when checks for sparse md are implemented in other implementations.
+            DNNL_X64_ONLY(REG_SPARSE_SR(s8, oi, s8, OI16i64o4i, sparse_inputs_order::keep, sparse_spec::reference))
+            DNNL_X64_ONLY(REG_SPARSE_SR(s8, format_tag::io, s8, OI16i64o4i, sparse_inputs_order::keep, sparse_spec::reference))
 
             REG_FAST_DIRECT_COPY(s8, f32)
             REG_FAST_DIRECT_COPY(s8, s32)
