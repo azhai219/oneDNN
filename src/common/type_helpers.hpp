@@ -360,7 +360,6 @@ inline bool blocking_desc_is_equal(const memory_desc_t &lhs_md,
     if (ignore_strides) return equal;
 
     for (int d = 0; d < lhs_md.ndims; ++d) {
-        if (lhs_md.dims[d] == 1 && lhs_md.padded_dims[d] == 1) continue;
         equal = equal && lhs.strides[d] == rhs.strides[d];
     }
 
