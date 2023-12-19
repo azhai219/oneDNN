@@ -245,6 +245,8 @@ status_t gemm_convolution_fwd_t::execute_forward_ncsp(
     const size_t weights_oc_size = jcp.ic * jcp.ks;
     const size_t weights_g_size = weights_oc_size * jcp.oc;
     const bool is_problem_3d = pd()->ndims() == 5;
+    src += src_d.off_l(0);
+    dst += dst_d.off_l(0);
 
     src += src_d.off_l(0);
     dst += dst_d.off_l(0);
