@@ -167,6 +167,7 @@ enum {
     key_brgemm_primitive_zp_comp_a,
     key_brgemm_primitive_zp_comp_b,
     key_brgemm_primitive_buffer_reduce,
+    key_brgemm_primitive_decomp_buf,
     key_concat_iptrs,
     key_concat_istrides,
     key_concat_nelems,
@@ -334,6 +335,10 @@ enum {
     key_wino_V,
     key_wino_M,
     key_binary_post_ops_expanded_rhs,
+    key_decompression_scales,
+    key_decompression_zero_points,
+    key_src_quantized,
+    key_src_dequantized_scales,
     // These two keys should always be the last ones,
     // even though they are not in alphabetical order
     key_nested,
