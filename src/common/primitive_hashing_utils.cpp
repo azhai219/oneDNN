@@ -20,7 +20,6 @@
 #include "type_helpers.hpp"
 #include "utils.hpp"
 
-#include "dnnl_thread.hpp"
 #include "engine.hpp"
 #include "primitive_hashing_utils.hpp"
 
@@ -186,6 +185,7 @@ size_t get_attr_hash(const primitive_attr_t &attr) {
         seed = hash_combine(
                 seed, get_md_hash(attr.dropout_.user_dropout_desc_));
     }
+    seed = hash_combine(seed, attr.src_dyn_quant_params_.group_size_);
     // Combined hash for attributes
     return seed;
 }

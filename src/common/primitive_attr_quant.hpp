@@ -61,6 +61,7 @@ struct quant_entry_t : public c_compatible {
         }
         return status::success;
     }
+
     status_t set(const quant_entry_t &other) {
         return set(other.mask_, other.data_type_, other.group_ndims_,
                 other.group_dims_);
@@ -108,14 +109,27 @@ struct quant_entry_t : public c_compatible {
 
     std::string get_verbose() const;
 
-private:
+public:
     // Note: INT_MIN is used on purpose to avoid potential issues when
     // `(mask & bit)` expression will return `true`. `INT_MIN` is represented
     // as `10...0` in bits and will avoid such situations.
     int mask_ = INT_MIN;
+private:
     data_type_t data_type_ = data_type::undef;
     int group_ndims_ = 0;
     dims_t group_dims_ {};
+public:
+    // openvino extension members
+    // for scale
+    bool is_set_ = false;
+    int ndims_ = 0;
+    dims_t dims_ {};
+    // for zero_point
+    int ndims_wei = 0;
+    dims_t dims_wei {};
+    bool is_set_wei = false;
+    int mask_wei = 0;
+    data_type_t data_type_wei = data_type::s32;
 };
 
 std::ostream &operator<<(std::ostream &ss, const quant_entry_t &e);
@@ -145,6 +159,44 @@ struct quant_entries_t : public c_compatible {
     // specific entry.
     status_t set(int arg, const quant_entry_t &other) {
         return entries_[arg].set(other);
+    }
+
+    status_t set(int arg, const dims_t dims, int ndims) {
+        if (!check_arg(arg)) return status::invalid_arguments;
+        entries_[arg].is_set_ = true;
+        entries_[arg].ndims_ = ndims;
+        entries_[arg].mask_ = 1;
+        utils::array_copy(entries_[arg].dims_, dims, entries_[arg].ndims_);
+        return status::success;
+    }
+
+    status_t set(int arg, const dims_t dims, int ndims, data_type_t data_type) {
+        const bool supported_arg = utils::one_of(arg, DNNL_ARG_WEIGHTS);
+        if (!supported_arg) return status::unimplemented;
+
+        switch (arg) {
+            case DNNL_ARG_WEIGHTS:
+                entries_[arg].is_set_wei = true;
+                entries_[arg].ndims_wei = ndims;
+                entries_[arg].mask_wei = 1;
+                entries_[arg].data_type_wei = data_type;
+                utils::array_copy(entries_[arg].dims_wei, dims, ndims);
+                break;
+        }
+        return status::success;
+    }
+
+
+    const dims_t & get_dims(int /*arg*/) const {
+        return get(DNNL_ARG_WEIGHTS).dims_wei;
+    }
+
+    int get_ndims(int arg) const {
+        if (!check_arg(arg)) return -1;
+        switch (arg) {
+            case DNNL_ARG_WEIGHTS: return get(arg).ndims_wei; break;
+            default: return 0;
+        }
     }
 
     // This interface is different from the one below and is just a shortcut.
@@ -306,6 +358,7 @@ struct zero_points_t : public quant_entries_t {
 
     static zero_points_t deserialize(deserializer_t &d);
 
+
 private:
     static constexpr data_type_t default_data_type_ = data_type::s32;
 
@@ -321,6 +374,53 @@ private:
         if (arg == DNNL_ARG_SRC_2) return true;
         return false;
     }
+
+};
+
+struct src_dyn_quant_params_t : public c_compatible {
+    src_dyn_quant_params_t() : group_size_(0) {}
+    bool has_default_values() const {
+        return (group_size_ == 0);
+    }
+    bool defined() const {
+        return true;
+    }
+
+    status_t set(uint64_t group_size) {
+        group_size_ = group_size;
+        return status::success;
+    }
+
+    uint64_t get() {
+        return group_size_;
+    }
+
+    bool operator==(const src_dyn_quant_params_t &rhs) const {
+        using namespace utils;
+        return group_size_ == rhs.group_size_;
+    }
+
+    uint64_t group_size_;
+};
+
+struct legacy_zero_points_t : public c_compatible {
+    bool operator==(const legacy_zero_points_t &rhs) const {
+        return count_ == rhs.count_ && mask_ == rhs.mask_;
+    }
+
+    bool has_default_values() const {
+        return count_ == 0 && mask_ == 0;
+    }
+
+    status_t set(dim_t count, int mask) {
+        count_ = count;
+        mask_ = mask;
+
+        return status::success;
+    }
+
+    dim_t count_ = 0;
+    int mask_ = 0;
 };
 
 } // namespace impl

@@ -46,17 +46,17 @@
             const auto scales_d \
                     = ctx.memory_mdw(DNNL_ARG_ATTR_SCALES | (arg)); \
             VCHECK_ATTR( \
-                    utils::one_of(scales_d.data_type(), data_type::f32, \
-                            data_type::f16, data_type::bf16, data_type::e8m0), \
+                    scales_d.data_type() == data_type::f32 && (scales_d.ndims() == 1 || scales_d.ndims() == 2), \
                     "Unsupported scales data type"); \
-            if (scales_d.nelems() == 1) { \
+            if (scales_d.dims()[0] == 1) { \
                 const float s = cpu::io::load_float_value( \
                         scales_d.data_type(), scales, 0); \
                 if (utils::one_of((arg), DNNL_ARG_DST, \
                             DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_DST)) { \
-                    utils::array_set(CONCAT2(scales, _buf16), 1.f / s, 16); \
+                    utils::array_set( \
+                            CONCAT2(scales, _buf16), 1.f / scales[0], 16); \
                 } else { \
-                    utils::array_set(CONCAT2(scales, _buf16), s, 16); \
+                    utils::array_set(CONCAT2(scales, _buf16), scales[0], 16); \
                 } \
                 scales = CONCAT2(scales, _buf16); \
             } \
