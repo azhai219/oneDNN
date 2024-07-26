@@ -179,15 +179,30 @@ struct primitive_desc_t : public c_compatible {
             return !attr()->rounding_mode_.has_default_values()
                     ? arg_usage_t::input
                     : arg_usage_t::unused;
-
+        if ((arg & DNNL_ARG_ATTR_ZERO_POINTS)
+                && !attr()->zero_points_.has_default_values(arg))
+            return arg_usage_t::input;
+        if ((arg & (DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC))
+            && !attr()->input_zero_points_.has_default_values())
+            return arg_usage_t::input;
+        if ((arg & (DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS))
+            && !attr()->weights_zero_points_.has_default_values())
+            return arg_usage_t::input;
+        if ((arg & (DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST))
+            && !attr()->output_compensations_.has_default_values())
+            return arg_usage_t::input;
         for (int idx = 0; idx < attr()->post_ops_.len(); ++idx) {
             using namespace primitive_kind;
-            if (post_op_has_proper_input(
-                        attr(), binary, idx, arg, DNNL_ARG_SRC_1)
-                    || post_op_has_proper_input(
-                            attr(), prelu, idx, arg, DNNL_ARG_WEIGHTS))
+            if (post_op_has_proper_input(attr(), binary, idx, arg, DNNL_ARG_SRC_1) ||
+                post_op_has_proper_input(attr(), depthwise, idx, arg, DNNL_ARG_SRC_1) ||
+                post_op_has_proper_input(attr(), quantization, idx, arg, DNNL_ARG_SRC_1) ||
+                post_op_has_proper_input(attr(), prelu, idx, arg, DNNL_ARG_WEIGHTS))
                 return arg_usage_t::input;
         }
+        if (arg == (DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_WEIGHTS))
+            return arg_usage_t::input;
+        if (arg == (DNNL_ARG_ATTR_POST_OP_DW | DNNL_ARG_BIAS))
+            return arg_usage_t::input;
 
         return arg_usage_t::unused;
     }
@@ -353,6 +368,15 @@ struct primitive_desc_t : public c_compatible {
     int n_prelu_po_inputs() const {
         return po_inputs(attr()->post_ops_, primitive_kind::prelu);
     }
+
+    int n_depthwise_po_inputs() const {
+        return po_inputs(attr()->post_ops_, primitive_kind::depthwise);
+    }
+
+    int n_quantization_po_inputs() const {
+        return po_inputs(attr()->post_ops_, primitive_kind::quantization);
+    }
+
     // The `hint_mds(bool is_hint)` returns a vector of memory descriptors
     // that might affect the equality of primitive descriptors for backward pass.
     //
