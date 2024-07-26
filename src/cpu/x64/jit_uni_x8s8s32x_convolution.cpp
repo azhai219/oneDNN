@@ -55,6 +55,9 @@ status_t jit_uni_x8s8s32x_convolution_fwd_t<isa>::execute_forward_2d(
     const int32_t *dst_zero_points = CTX_IN_MEM(
             const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
+    DEFINE_INPUT_ZERO_POINTS_BUFFER(input_zp, jcp);
+    DEFINE_OUTPUT_COMPENSATION_BUFFER(output_compensation, jcp);
+
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
@@ -79,8 +82,7 @@ status_t jit_uni_x8s8s32x_convolution_fwd_t<isa>::execute_forward_2d(
     size_t offset = weights_d.size() - weights_d.additional_buffer_size();
     auto w = const_cast<char *>(weights);
     const int32_t *compensation = (jcp.signed_input) ? reinterpret_cast<int32_t *>(&w[offset]) :
-                                  (jcp.with_input_zp) ? pd()->attr()->output_compensations_.shifts_ : nullptr;
-    const uint8_t* input_zp = pd()->attr()->input_zero_points_.shifts_;
+                                  (jcp.with_input_zp) ? output_compensation : nullptr;
     const int32_t *zp_compensation = jcp.src_zero_point
             ? reinterpret_cast<int32_t *>(&w[offset])
                     + (jcp.signed_input ? jcp.ngroups * jcp.oc : 0)
@@ -240,6 +242,9 @@ status_t jit_uni_x8s8s32x_convolution_fwd_t<isa>::execute_forward_1d(
     const int32_t *dst_zero_points = CTX_IN_MEM(
             const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
+    DEFINE_INPUT_ZERO_POINTS_BUFFER(input_zp, jcp);
+    DEFINE_OUTPUT_COMPENSATION_BUFFER(output_compensation, jcp);
+
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
@@ -264,9 +269,8 @@ status_t jit_uni_x8s8s32x_convolution_fwd_t<isa>::execute_forward_1d(
     size_t ch_offset = jcp.is_depthwise ? jcp.nb_ch * jcp.ch_block
                                         : jcp.ngroups * jcp.oc;
     auto w = const_cast<char *>(weights);
-    const int32_t *compensation = (jcp.signed_input)
-            ? reinterpret_cast<int32_t *>(&w[extra_data_offset])
-            : nullptr;
+    const int32_t *compensation = (jcp.signed_input) ? reinterpret_cast<int32_t *>(&w[extra_data_offset]) :
+                                  (jcp.with_input_zp) ? output_compensation : nullptr;
     const int32_t *zp_compensation = jcp.src_zero_point
             ? reinterpret_cast<int32_t *>(&w[extra_data_offset])
                     + (jcp.signed_input ? ch_offset : 0)
@@ -391,6 +395,9 @@ status_t jit_uni_x8s8s32x_convolution_fwd_t<isa>::execute_forward_2d_dw(
     const int32_t *dst_zero_points = CTX_IN_MEM(
             const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
+    DEFINE_INPUT_ZERO_POINTS_BUFFER(input_zp, jcp);
+    DEFINE_OUTPUT_COMPENSATION_BUFFER(output_compensation, jcp);
+
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
@@ -417,8 +424,7 @@ status_t jit_uni_x8s8s32x_convolution_fwd_t<isa>::execute_forward_2d_dw(
     size_t offset = weights_d.size() - weights_d.additional_buffer_size();
     auto w = const_cast<char *>(weights);
     const int32_t *compensation = (jcp.signed_input) ? reinterpret_cast<int32_t *>(&w[offset]) :
-                                  (jcp.with_input_zp) ? pd()->attr()->output_compensations_.shifts_ : nullptr;
-    const uint8_t* input_zp = pd()->attr()->input_zero_points_.shifts_;
+                                  (jcp.with_input_zp) ? output_compensation : nullptr;
     const int32_t *zp_compensation = jcp.src_zero_point
             ? reinterpret_cast<int32_t *>(&w[offset])
                     + (jcp.signed_input ? jcp.nb_ch * jcp.ch_block : 0)
@@ -522,6 +528,9 @@ status_t jit_uni_x8s8s32x_convolution_fwd_t<isa>::execute_forward_3d(
     const int32_t *dst_zero_points = CTX_IN_MEM(
             const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
+    DEFINE_INPUT_ZERO_POINTS_BUFFER(input_zp, jcp);
+    DEFINE_OUTPUT_COMPENSATION_BUFFER(output_compensation, jcp);
+
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
@@ -546,8 +555,7 @@ status_t jit_uni_x8s8s32x_convolution_fwd_t<isa>::execute_forward_3d(
     size_t offset = weights_d.size() - weights_d.additional_buffer_size();
     auto w = const_cast<char *>(weights);
     const int32_t *compensation = (jcp.signed_input) ? reinterpret_cast<int32_t *>(&w[offset]) :
-                                  (jcp.with_input_zp) ? pd()->attr()->output_compensations_.shifts_ : nullptr;
-    const uint8_t* input_zp = pd()->attr()->input_zero_points_.shifts_;
+                                  (jcp.with_input_zp) ? output_compensation : nullptr;
     const int32_t *zp_compensation = jcp.src_zero_point
             ? reinterpret_cast<int32_t *>(&w[offset])
                     + (jcp.signed_input ? jcp.ngroups * jcp.oc : 0)
@@ -729,6 +737,11 @@ status_t jit_uni_x8s8s32x_convolution_fwd_t<isa>::execute_forward_3d_dw(const ex
     const int32_t *dst_zero_points = CTX_IN_MEM(
             const int32_t *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
+    const auto &jcp = pd()->jcp_;
+
+    DEFINE_INPUT_ZERO_POINTS_BUFFER(input_zp, jcp);
+    DEFINE_OUTPUT_COMPENSATION_BUFFER(output_compensation, jcp);
+
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
@@ -738,7 +751,6 @@ status_t jit_uni_x8s8s32x_convolution_fwd_t<isa>::execute_forward_3d_dw(const ex
             = pd()->with_bias() ? types::data_type_size(bias_d.data_type()) : 0;
     const size_t dst_dt_size = types::data_type_size(dst_d.data_type());
 
-    const auto &jcp = pd()->jcp_;
     assert(jcp.ic_block == 1);
     assert(jcp.oc_block == 1);
     assert(jcp.nb_ic == 1);
@@ -755,9 +767,8 @@ status_t jit_uni_x8s8s32x_convolution_fwd_t<isa>::execute_forward_3d_dw(const ex
 
     size_t offset = weights_d.size() - weights_d.additional_buffer_size();
     auto w = const_cast<char *>(weights);
-    int32_t* compensation = (jcp.signed_input) ? reinterpret_cast<int32_t *>(&w[offset]) :
-                            (jcp.with_input_zp) ? pd()->attr()->output_compensations_.shifts_ : 0;
-    const uint8_t* input_zp = pd()->attr()->input_zero_points_.shifts_;
+    const int32_t* compensation = (jcp.signed_input) ? reinterpret_cast<int32_t *>(&w[offset]) :
+                                  (jcp.with_input_zp) ? output_compensation : 0;
     int32_t *zp_compensation = jcp.src_zero_point
             ? reinterpret_cast<int32_t *>(&w[offset])
                     + (jcp.signed_input ? jcp.nb_ch * jcp.ch_block : 0)
@@ -795,7 +806,7 @@ status_t jit_uni_x8s8s32x_convolution_fwd_t<isa>::execute_forward_3d_dw(const ex
         int iw_s = ow_s * jcp.stride_w;
 
         auto bias_w = bias ? bias + (bias_d.blk_off(g) * bia_dt_size) : 0;
-        int32_t *compensation_w = (jcp.signed_input || jcp.with_input_zp) ? compensation + g : 0;
+        const int32_t *compensation_w = (jcp.signed_input || jcp.with_input_zp) ? compensation + g : 0;
 
         auto dst_w = dst + dst_dt_size * dst_d.blk_off(n, g, od_s, oh_s, ow_s);
         auto src_w = src + src_d.blk_off(n, g, id_s, ih_s, iw_s);
@@ -842,6 +853,8 @@ status_t jit_uni_x8s8s32x_convolution_fwd_t<isa>::execute_forward_3d_dw(const ex
         p.t_overflow = i_t_overflow;
         p.b_overflow = i_b_overflow;
         p.owb = owb;
+        p.post_ops_binary_rhs_arg_vec
+                = post_ops_binary_rhs_arg_vec.data();
 
         p.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec.data();
         p.dst_orig = dst;

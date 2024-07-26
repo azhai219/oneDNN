@@ -216,14 +216,13 @@ status_t ref_convolution_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         args.ctx = &ctx;
         args.l_offset = dst_l_off;
         args.dst_md = pd()->dst_md();
-        ref_post_ops->execute(d, args);
+                ref_post_ops->execute(d, args, g * OC + oc);
         if (dst_rnd_mode == rounding_mode::stochastic)
             d = math::stochastic_round_fwd(
                     d, dst_off, rnd_seed[0], dst_d.data_type());
 
         io::store_float_value(dst_d.data_type(), d, dst, dst_off);
     });
-
     return status::success;
 }
 
@@ -303,7 +302,6 @@ status_t ref_convolution_bwd_data_t::execute_backward_data(
         return ds;
     };
 
-    // help compiler optimize the code constants for plain layouts kernel
     const dims_t &diff_dst_str = diff_dst_d.blocking_desc().strides;
     const dim_t diff_dst_oc_stride = diff_dst_str[1];
     const dim_t diff_dst_ow_stride = diff_dst_str[ndims - 1];
@@ -363,9 +361,6 @@ status_t ref_convolution_bwd_data_t::execute_backward_data(
             for_(dim_t oc = 0; oc < OC; ++oc)
             for_(dim_t kd = 0; kd < KD; ++kd)
             for (dim_t kh = 0; kh < KH; ++kh) {
-                // Note: placing these 2 params outside the `kw-loop` because
-                // of a compiler-generated bug. Declaring 'od' as volatile
-                // fixes a recurring seg-fault.
                 const volatile dim_t od_ = id - kd * KDD + padFront;
                 const dim_t weights_off_ = oc * weights_oc_stride
                         + kd * weights_kd_stride + kh * weights_kh_stride;
@@ -410,14 +405,18 @@ status_t ref_convolution_bwd_data_t::execute_backward_data(
         for (int i = 0; i < p.len(); i++) {
             auto &post_op = p.entry_[i];
             if (post_op.is_depthwise()) {
-                auto depthwise_weights = post_op.depthwise.weights_data;
-                auto depthwise_bias = post_op.depthwise.biases_data;
+                auto depthwise_base = CTX_IN_MEM(const float *,
+                        (DNNL_ARG_ATTR_MULTIPLE_POST_OP(i) | DNNL_ARG_SRC_1));
+                auto depthwise_weights = depthwise_base
+                        + post_op.depthwise.offset[post_op.depthwise.scales];
+                auto depthwise_bias = depthwise_base
+                        + post_op.depthwise.offset[post_op.depthwise.shifts];
 
                 ds = depthwise_injectors[depthwise_inj_idx]->compute_scalar(ds,
                         depthwise_weights + g * IC + ic,
                         depthwise_bias + g * IC + ic);
+                depthwise_inj_idx++;
             }
-            depthwise_inj_idx++;
         }
 
         const auto diff_src_off = ref_conv_utils::get_data_off(
