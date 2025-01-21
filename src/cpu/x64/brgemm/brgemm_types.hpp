@@ -580,6 +580,7 @@ struct brgemm_kernel_params_t {
     const void *ptr_wei_scales = nullptr;
     const void *ptr_wei_zero_points = nullptr;
     const void *ptr_src_scales = nullptr;
+    const void *ptr_src_grouped_sum = nullptr;
     size_t ic;
     dim_t dynamic_LDA = 0;
     dim_t dynamic_LDB = 0;
