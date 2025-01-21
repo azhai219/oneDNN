@@ -397,6 +397,8 @@ struct brgemm_desc_t {
     bool with_src_dyn_quant = false;
     int src_scales_group_size = 0;
     int src_scales_stride = 0;
+    int src_sum_group_size = 0;
+    int src_grouped_sum_stride = 0;
 
     bool is_row_major() const {
         assert(layout != brgemm_layout_undef);
@@ -647,6 +649,7 @@ struct brgemm_kernel_params_t {
     int32_t zp_a_val = 1;
 
     const void *ptr_wei_zero_points = nullptr;
+    const void *ptr_src_grouped_sum = nullptr;
     size_t ic;
     dim_t dynamic_LDA = 0;
     dim_t dynamic_LDB = 0;
