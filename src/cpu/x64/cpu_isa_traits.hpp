@@ -28,19 +28,24 @@
 
 #include "cpu/platform.hpp"
 
+#if !defined(XBYAK64)
 #define XBYAK64
+#endif
+
+#if !defined(XBYAK_NO_OP_NAMES)
 #define XBYAK_NO_OP_NAMES
+#endif
+
 /* in order to make selinux happy memory that would be marked with X-bit should
  * be obtained with mmap */
-// #define XBYAK_USE_MMAP_ALLOCATOR
+#if !defined(XBYAK_USE_MMAP_ALLOCATOR)
+#define XBYAK_USE_MMAP_ALLOCATOR
+#endif
 
-// Overwrite ONEDNN XBYAK_NO_EXCEPTION definition.
-// #define XBYAK_NO_EXCEPTION
-// #ifndef NDEBUG
-// #undef XBYAK_NO_EXCEPTION
-// #endif
 #ifdef DNNL_XBYAK_NO_EXCEPTION
+#if defined(NDEBUG) && !defined(XBYAK_NO_EXCEPTION)
 #define XBYAK_NO_EXCEPTION
+#endif
 #endif
 #if defined(_MSC_VER) && !defined(__INTEL_COMPILER)
 /* turn off `size_t to other-type implicit casting` warning
