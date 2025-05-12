@@ -100,7 +100,7 @@ struct simple_sparse_reorder_impl<SIMPLE_SPARSE_REORDER_TEMPL_CALL,
         VDISPATCH_REORDER_IC(!input_d.has_runtime_dims_or_strides(),
                 VERBOSE_RUNTIMEDIM_UNSUPPORTED);
         const size_t D_mask = utils::array_product(
-                input_d.dims(), math::ilog2q(attr->scales_.get_mask(DNNL_ARG_SRC) + 1));
+                input_d.dims(), math::ilog2q(attr->scales_.get_mask(DNNL_ARG_SRC) - INT_MIN + 1));
         const size_t oc = (input_d.dims()[0]);
         VDISPATCH_REORDER_IC(output_d.matches_tag(fmt_o) && input_d.matches_tag(fmt_i),
                 VERBOSE_RUNTIMEDIM_UNSUPPORTED);
@@ -119,7 +119,7 @@ struct simple_sparse_reorder_impl<SIMPLE_SPARSE_REORDER_TEMPL_CALL,
         VDISPATCH_REORDER_IC(utils::one_of(input_d.data_type(), data_type::f32, data_type::s8),
                 VERBOSE_UNSUPPORTED_DT, "src");
         VDISPATCH_REORDER_IC(utils::one_of(output_d.data_type(), data_type::s8) && (D_mask == 1 || D_mask == oc),
-                VERBOSE_UNSUPPORTED_DT, "src");
+                VERBOSE_UNSUPPORTED_DT, "dst");
 
         return status::success;
     }
@@ -225,7 +225,7 @@ struct simple_sparse_reorder_t : public primitive_t {
                     && attr->has_default_values()
                     && simple_sparse_reorder_impl<
                             SIMPLE_SPARSE_REORDER_TEMPL_CALL,
-                            spec>::is_applicable(src_md, dst_md, attr);
+                            spec>::is_applicable(src_md, dst_md, attr) == status::success;
             if (!ok) return status::invalid_arguments;
 
             auto _pd = new pd_t(attr, src_engine->kind(), src_md,

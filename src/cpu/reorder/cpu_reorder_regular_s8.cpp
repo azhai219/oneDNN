@@ -28,19 +28,13 @@ const impl_list_map_t &regular_s8_impl_list_map() {
     static const impl_list_map_t the_map = REG_REORDER_P({
         // s8 ->
         {{s8, data_type::undef, 0}, {
-            CPU_REORDER_INSTANCE(rnn_weights_reorder_s8_t,s8)
-            CPU_REORDER_INSTANCE(rnn_brgemm_weights_reorder_s8_t,s8, s8)
-            DNNL_X64_ONLY(CPU_REORDER_INSTANCE(x64::brgemm_matmul_copy_reorder_t))
-
-            DNNL_X64_ONLY(CPU_REORDER_INSTANCE(x64::jit_uni_reorder_direct_copy_t))
-            DNNL_X64_ONLY(CPU_REORDER_INSTANCE(x64_jit_blk_reorder_t))
-            DNNL_X64_ONLY(CPU_REORDER_INSTANCE(x64_jit_uni_reorder_t))
-
-            DNNL_AARCH64_ONLY(CPU_REORDER_INSTANCE(aarch64_jit_blk_reorder_t))
-            DNNL_AARCH64_ONLY(CPU_REORDER_INSTANCE(aarch64_jit_uni_reorder_t))
             // // TODO: move it down when checks for sparse md are implemented in other implementations.
             DNNL_X64_ONLY(REG_SPARSE_SR(s8, oi, s8, OI16i64o4i, sparse_inputs_order::keep, sparse_spec::reference))
             DNNL_X64_ONLY(REG_SPARSE_SR(s8, format_tag::io, s8, OI16i64o4i, sparse_inputs_order::keep, sparse_spec::reference))
+
+            CPU_REORDER_INSTANCE(rnn_weights_reorder_s8_t,s8)
+            CPU_REORDER_INSTANCE(rnn_brgemm_weights_reorder_s8_t,s8, s8)
+            DNNL_X64_ONLY(CPU_REORDER_INSTANCE(x64::brgemm_matmul_copy_reorder_t))
 
             REG_FAST_DIRECT_COPY(s8, f32)
             REG_FAST_DIRECT_COPY(s8, s32)
@@ -49,6 +43,12 @@ const impl_list_map_t &regular_s8_impl_list_map() {
             REG_FAST_DIRECT_COPY(s8, s8)
             REG_FAST_DIRECT_COPY(s8, u8)
 
+            DNNL_X64_ONLY(CPU_REORDER_INSTANCE(x64::jit_uni_reorder_direct_copy_t))
+            DNNL_X64_ONLY(CPU_REORDER_INSTANCE(x64_jit_blk_reorder_t))
+            DNNL_X64_ONLY(CPU_REORDER_INSTANCE(x64_jit_uni_reorder_t))
+
+            DNNL_AARCH64_ONLY(CPU_REORDER_INSTANCE(aarch64_jit_blk_reorder_t))
+            DNNL_AARCH64_ONLY(CPU_REORDER_INSTANCE(aarch64_jit_uni_reorder_t))
             DNNL_NON_X64_ONLY(REG_SR_BIDIR(s8, any, f32, nChw16c))
             DNNL_NON_X64_ONLY(REG_SR_BIDIR(s8, any, s32, nChw16c))
             DNNL_NON_X64_ONLY(REG_SR_BIDIR(s8, any, bf16, nChw16c))
