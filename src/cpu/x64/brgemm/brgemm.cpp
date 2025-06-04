@@ -536,6 +536,8 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
                 zp_type = brgemm_broadcast_t::per_tensor;
             } else if (mask == (1 << 1)) {
                 zp_type = brgemm_broadcast_t::per_n;
+            } else if (mask == 1 && mem_arg == DNNL_ARG_WEIGHTS ) {
+                zp_type = brgemm_broadcast_t::none;
             } else {
                 return status::unimplemented;
             }
