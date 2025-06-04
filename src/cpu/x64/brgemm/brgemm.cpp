@@ -527,20 +527,20 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
         zp_type = brgemm_broadcast_t::none;
 
         const bool skip_zero_point
-                = mem_arg == DNNL_ARG_WEIGHTS && brg->skip_zp_b_compensation;
+                = (mem_arg == DNNL_ARG_WEIGHTS && brg->skip_zp_b_compensation);
         if (skip_zero_point) return status::success;
-
         if (!zp.has_default_values(mem_arg)) {
             int mask = zp.get_mask(mem_arg);
             if (mask == 0) {
                 zp_type = brgemm_broadcast_t::per_tensor;
             } else if (mask == (1 << 1)) {
                 zp_type = brgemm_broadcast_t::per_n;
+            } else if (mask == 1 && mem_arg == DNNL_ARG_WEIGHTS ) {
+                zp_type = brgemm_broadcast_t::none;
             } else {
                 return status::unimplemented;
             }
         }
-
         return status::success;
     };
 
