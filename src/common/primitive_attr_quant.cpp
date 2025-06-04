@@ -211,7 +211,7 @@ int quant_entry_t::get_mask() const {
     if (is_set_wei) return mask_wei;
     if (is_set_) return mask_;
     if (is_set_scale) return mask_scale;
-    return 0;
+    return INT_MIN;
 }
 data_type_t quant_entry_t::get_data_type() const {
     if (is_set_wei) return data_type_wei;
