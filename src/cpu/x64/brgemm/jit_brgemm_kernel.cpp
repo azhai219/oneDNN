@@ -2824,6 +2824,34 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                         uni_vmovups(vmm_lookup, ptr[reg_ptr]);
                         vmm_zero_points = Vmm(isa_num_vregs(brg.isa_impl) - 2);
                     }
+                } else if (brg.dt_b == data_type::f4_e2m1) {
+                    static const float lookup[16] = {
+                        0.0f,   0.5f,
+                        1.0f,   1.5f,
+                        2.0f,   3.0f,
+                        4.0f,   6.0f,
+                        -0.0f,  -0.5f,
+                        -1.0f,  -1.5f,
+                        -2.0f,  -3.0f,
+                        -4.0f,  -6.0f
+                    };
+
+                    static const uint32_t mask_signed_bit[8] = {
+                        0x80000000, 0x80000000, 0x80000000, 0x80000000,
+                        0x80000000, 0x80000000, 0x80000000, 0x80000000,
+                    };
+
+                    if (brg.isa_impl == avx2) {
+                        mov(reg_ptr, (size_t)lookup);
+                        uni_vmovups(vmm_lookup, ptr[reg_ptr]);
+                        mov(reg_ptr, (size_t)mask_signed_bit);
+                        uni_vmovups(vmm_mask_signed_bit, ptr[reg_ptr]);
+                        vmm_zero_points = Vmm(isa_num_vregs(brg.isa_impl) - 3);
+                    } else {
+                        mov(reg_ptr, (size_t)lookup);
+                        uni_vmovups(vmm_lookup, ptr[reg_ptr]);
+                        vmm_zero_points = Vmm(isa_num_vregs(brg.isa_impl) - 2);
+                    }
                 }
 
                 mov(reg_local_wei_scales, ptr[rsp + reg_aux2_wei_scales_offs_]);
