@@ -174,7 +174,6 @@ struct brgemm_inner_product_fwd_t : public primitive_t {
                                     jbgp_.amx_buf_size_per_thread);
             }
 
-
             auto scratchpad = scratchpad_registry().registrar();
             jbgp_.init_scratchpad(scratchpad);
             if (jbgp_.with_scales)

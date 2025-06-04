@@ -205,90 +205,6 @@ int calculate_ldb_params(brgemm_desc_t *brg, const int try_ld_block2) {
     return nstl::max(1, adj_ld_block2);
 }
 
-/*int calculate_max_bcast_block(brgemm_desc_t *brg, const int adj_ld_block2) {
-
-    // TODO: Calculating the number of available registers should be re-factored
-    // to use one code here and in brgemm kernel generator on
-    // "max_effective_vregs" calculation
-    int max_isa_regs = isa_num_vregs(brg->isa_impl);
-    const int max_bcst_regs = brg->n_bcast_1_load ? 0 : 1;
-    const int load_regs = brg->n_bcast_1_load ? 1 : adj_ld_block2;
-    const bool req_zp_a_comp_pads
-            = (brg->req_cal_comp_pads || brg->brgattr.max_top_vpad > 0
-                      || brg->brgattr.max_bottom_vpad > 0)
-            && brg->zp_type_a != brgemm_broadcast_t::none;
-
-    // --------------  whole kernel --------------
-    // To support the f16 vnni B matrix on non-AMX we need to use two Vmm
-    // registers for permutation in brgemm kernel:
-    // see f16_perm_even_vreg_ and f16_perm_odd_vreg_ in brgemm kernel
-    const int b_vnni_regs = brg->is_f16_b_non_amx_vnni() ? 2 : 0;
-
-    // non-VNNI INT8 dot product required 2 temp vectors:
-    // see int8_ones_words() and int8_dot_product_temp() in brgemm kernel
-    const int non_int8_vnni_regs
-            = (brg->is_int8 && !brg->has_int8_vnni) ? 2 : 0;
-
-    max_isa_regs -= b_vnni_regs + non_int8_vnni_regs;
-
-    // --------------- microkernel ---------------
-    // see vmm_inp_shift() in brgemm kernel
-    const int compensation_regs = brg->req_s8s8_compensation
-                    || brg->zp_type_a != brgemm_broadcast_t::none
-            ? 1
-            : 0;
-
-    // see vmm_zp_a_shift(), vmm_one_bytes() in brgemm kernel
-    const int zp_a_comp_pads_regs = req_zp_a_comp_pads ? 2 : 0;
-
-    const int microkernel_regs = zp_a_comp_pads_regs + compensation_regs;
-
-    const auto microkernel_max_reg_count
-            = max_isa_regs - microkernel_regs - load_regs - max_bcst_regs;
-
-    auto microkernel_max_bcast_block
-            = microkernel_max_reg_count / (adj_ld_block2 + brg->n_bcast_1_load);
-
-    // ----- post-ops and store accumulators -----
-    const int beta_regs = !one_of(brg->beta, 1.f, 0.f);
-
-    // For dynamic quantization case it is more performant to maximize the amount of accumulators
-    const int postops_regs = brg->attr() && !brg->with_src_dyn_quant
-            ? injector::aux_vec_count(
-                    brg->attr()->post_ops_, brg->isa_impl, true)
-            : 0;
-
-    // Emulators: fp8 emulation are supported for amx only
-    // In theory, vmm bf16_emu register indices overlap with other vmm
-    // registers related to 'max_bcast_block'
-    assert(IMPLICATION(
-            brg->is_bf16_emu, is_superset(brg->isa_impl, avx512_core)));
-    const int bf16_emu_regs = brg->is_bf16_emu ? 4 : 0;
-
-    const auto store_regs = nstl::max(beta_regs,
-            nstl::max(
-                    postops_regs, nstl::max(compensation_regs, bf16_emu_regs)));
-
-    const auto store_max_reg_count = max_isa_regs - store_regs;
-
-    auto store_max_bcast_block = store_max_reg_count / adj_ld_block2;
-
-    // ------------ final calculation ------------
-    auto max_bcast_block
-            = nstl::min(microkernel_max_bcast_block, store_max_bcast_block);
-
-    // non-VNNI INT8 dot product required 2 temp vectors
-    if (brg->is_int8 && !brg->has_int8_vnni) max_bcast_block -= 2;
-
-    // openvino extension
-    if (one_of(brg->dt_b, data_type::nf4) && brg->isa_impl == avx2) max_bcast_block -= 5;
-    if (one_of(brg->dt_b, data_type::f4_e2m1) && brg->isa_impl == avx2) max_bcast_block -= 2;
-    if (one_of(brg->dt_b, data_type::nf4, data_type::f4_e2m1) && brg->isa_impl != avx2) max_bcast_block -= 1;
-    if (brg->with_wei_decomp_zero_points && brg->wei_decomp_zero_points_stride == 0 && !brg->with_src_dyn_quant) max_bcast_block -= 1;
-    if (brg->with_src_dyn_quant) max_bcast_block -= 1;
-    max_bcast_block /= adj_ld_block2;
-    return max_bcast_block;
-}*/
 int calculate_max_bcast_block(brgemm_desc_t *brg, const int adj_ld_block2) {
 
     constexpr int max_bcst_regs = 1;
@@ -807,20 +723,6 @@ status_t brgemm_blocking_vmm(brgemm_desc_t *brg) {
         rd_unroll = nstl::min(rd_unroll, min_group_size / vnni_granularity);
         rd_unroll = nstl::min(rd_unroll, min_group_size / vnni_granularity);
     }
-    // int rd_unroll = one_of(brg->dt_b, data_type::nf4, data_type::u4, data_type::s4, data_type::f4_e2m1) ? 32 : 4;
-    // if (brg->with_grouped_wei_decomp && !brg->with_src_dyn_quant) {
-    //     auto min_group_size = nstl::min(brg->wei_decomp_scales_group_size, brg->wei_decomp_zero_points_group_size);
-    //     min_group_size = nstl::min(min_group_size, brg->src_scales_group_size);
-    //     rd_unroll = nstl::min(rd_unroll, min_group_size / vnni_granularity);
-    //     rd_unroll = nstl::min(rd_unroll, min_group_size / vnni_granularity);
-    //     brg->rd_block = rd_unroll * vnni_granularity;
-    // } else if (brg->with_src_dyn_quant) {
-    //     brg->rd_block = brg->src_scales_group_size;
-    //     auto min_group_size = nstl::min(brg->wei_decomp_scales_group_size, brg->wei_decomp_zero_points_group_size);
-    //     brg->rd_block = nstl::min(brg->rd_block, min_group_size);
-    // } else {
-    //     brg->rd_block = rd_unroll * vnni_granularity;
-    // }
 
     brg->rd_block = rd_unroll * vnni_granularity;
     brg->rdb = brg->reduce_dim / brg->rd_block;

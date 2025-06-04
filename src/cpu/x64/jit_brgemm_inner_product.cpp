@@ -99,7 +99,6 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
             = scale_utils::precompute_scales(scratchpad, src_scales, wei_scales_f,
                     pd()->IC(), pd()->OC(), false, wei_scale_mask == (1 << 0),
                     pd()->attr(), jit_scale_precompute_.get());
-
     DEFINE_ZERO_POINTS_BUFFER_ATTR_U8(pd()->attr(), wei_zero_points, DNNL_ARG_WEIGHTS);
     auto wei_scales = reinterpret_cast<const uint8_t*>(wei_scales_f);
 
@@ -152,9 +151,6 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
         auto qsrc_ptr = qsrc;
         auto src_dscales_ptr = src_dscales;
         int vec_loop_end = (ic_groups - 1) * jbgp.src_quant_group_size;
-        vec_loop_end = rnd_dn(jbgp.ic, jbgp.src_quant_group_size);
-        std::cout << "============:" << ic_groups << " ==ic " << jbgp.ic << "==" << jbgp.src_quant_group_size
-                  << "vec_loop_end:" << vec_loop_end << std::endl;
 
         parallel_nd(jbgp.mb, [&](int mb) {
             src_quantization_runtime_params_t rt_params = {};

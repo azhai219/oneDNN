@@ -722,19 +722,6 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
         jbgp.gemm_batch_size = 1;
         jbgp.nthr_ic_b = 1;
     }
-    /*if (jbgp.with_grouped_weights_decompression || jbgp.with_src_dynamic_quant) {
-        auto min_ic_group_size = std::min(jbgp.wei_scales_ic_group_size, jbgp.wei_zero_points_ic_group_size);
-        min_ic_group_size = std::min(min_ic_group_size, jbgp.src_quant_group_size);
-        if ((jbgp.nb_ic_blocking * k_blk) % min_ic_group_size != 0) {
-            jbgp.nb_ic_blocking = 64;
-        }
-        std::cout << "=========k_blk:" << k_blk << std::endl;
-        std::cout << "=========jbgp.nb_ic_blocking:" << jbgp.nb_ic_blocking << std::endl;
-        jbgp.K = k_blk * jbgp.nb_ic_blocking;
-        jbgp.gemm_batch_size = 1;
-        jbgp.nthr_ic_b = 1;
-    }
-    */
 
     const int nthrs_other = jbgp.nthr / jbgp.nthr_ic_b;
     const int min_work = 15;
