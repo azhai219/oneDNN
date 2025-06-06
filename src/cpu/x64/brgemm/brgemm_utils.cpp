@@ -663,29 +663,45 @@ status_t brgemm_blocking_vmm(brgemm_desc_t *brg) {
     const int max_vpad = nstl::max(
             brg->brgattr.max_top_vpad, brg->brgattr.max_bottom_vpad);
 
-    // iterate ld_block2 starting from 4 to allow bd_block larger than
-    // virtual padding
     int max_bcast_block {0}, min_bcast_block {0}, adj_ld_block2 {0};
-    bool few_regs = utils::one_of(brg->isa_impl, avx2, avx2_vnni, avx2_vnni_2);
-    few_regs |= brg->with_src_dyn_quant;
-    bool hint_n_bcast_1_load
-            = brg->brgattr.hint_loop_order == brgemm_lo_bl_1load;
-    for (int try_ld_block2 = 4; try_ld_block2 > 0; --try_ld_block2) {
-        adj_ld_block2 = calculate_ldb_params(brg, try_ld_block2);
-        brg->n_bcast_1_load
-                = (few_regs && adj_ld_block2 == 4) || hint_n_bcast_1_load;
+    if (brg->with_src_dyn_quant) {
+        adj_ld_block2 = calculate_ldb_params(brg, 4);
         max_bcast_block = calculate_max_bcast_block(brg, adj_ld_block2);
-        const auto bdb_tail = brg->bcast_dim % max_bcast_block;
-        min_bcast_block = bdb_tail > 0 ? bdb_tail : max_bcast_block;
-        if (min_bcast_block >= max_vpad) break;
+        // reduce 'ld_block2' to allow a larger 'bd_block'
+        if (is_superset(brg->isa_impl, avx2) && max_bcast_block < max_vpad) {
+            for (int try_ld_block2 = 2; try_ld_block2 > 0; --try_ld_block2) {
+                adj_ld_block2 = calculate_ldb_params(brg, try_ld_block2);
+                max_bcast_block = calculate_max_bcast_block(brg, adj_ld_block2);
+                if (max_bcast_block >= max_vpad) break;
+            }
+            // bcast block in brgemm kernel should be greater than virtual
+            // padding to avoid possible functional issues
+            if (max_bcast_block < max_vpad) return status::unimplemented;
+        }
+    } else {
+        // iterate ld_block2 starting from 4 to allow bd_block larger than
+        // virtual padding
+        bool few_regs = utils::one_of(brg->isa_impl, avx2, avx2_vnni, avx2_vnni_2);
+        bool hint_n_bcast_1_load
+            = brg->brgattr.hint_loop_order == brgemm_lo_bl_1load;
+        for (int try_ld_block2 = 4; try_ld_block2 > 0; --try_ld_block2) {
+            adj_ld_block2 = calculate_ldb_params(brg, try_ld_block2);
+            brg->n_bcast_1_load
+                = (few_regs && adj_ld_block2 == 4) || hint_n_bcast_1_load;
+            max_bcast_block = calculate_max_bcast_block(brg, adj_ld_block2);
+            const auto bdb_tail = brg->bcast_dim % max_bcast_block;
+            min_bcast_block = bdb_tail > 0 ? bdb_tail : max_bcast_block;
+            if (min_bcast_block >= max_vpad) break;
+        }
+        // bcast block in brgemm kernel should be greater than virtual
+        // padding to avoid possible functional issues
+        if (min_bcast_block < max_vpad) return status::unimplemented;
     }
-    // bcast block in brgemm kernel should be greater than virtual
-    // padding to avoid possible functional issues
-    if (min_bcast_block < max_vpad) return status::unimplemented;
 
     const int min_block = nstl::max(1, max_vpad);
 
     float best_bd_block_eff = 0.f;
+    if (max_bcast_block == 0) max_bcast_block = 1;
     brg->bd_block = max_bcast_block;
     for (int bd_block = max_bcast_block; bd_block >= min_block; bd_block--) {
         const auto bd_block_disb = static_cast<float>(brg->bcast_dim)
