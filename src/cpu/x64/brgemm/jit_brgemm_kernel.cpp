@@ -2391,7 +2391,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_dyn_quant(dim_t bd_block2,
     mov(reg_ptr, (size_t)mask_low_half);
     uni_vmovups(vmm_mask_low_half, ptr[reg_ptr]);
 
-    const int vec_size = vreg_traits<Vmm>::vlen;
+    const int vec_size = vreg_traits_t<Vmm>::vlen;
     auto accums_stack_space = bd_e * ld_block2 * vec_size;
     sub(rsp, accums_stack_space);
     for (int bd = bd_b; bd < bd_e; bd++) {
@@ -3411,6 +3411,10 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
                       mov(reg_src_scales, ptr[rsp + reg_src_scales_offs_]);
                       add(reg_src_scales, bd_block2 * brg.bd_block * brg.src_scales_stride * sizeof(float));
                       mov(ptr[rsp + reg_src_scales_offs_], reg_src_scales);
+
+                      mov(reg_src_grouped_sum, ptr[rsp + reg_src_grouped_sum_offs_]);
+                      add(reg_src_grouped_sum, bd_block2 * brg.bd_block * brg.src_grouped_sum_stride * sizeof(int32_t));
+                      mov(ptr[rsp + reg_src_grouped_sum_offs_], reg_src_grouped_sum);
                   }
 
                   advance_bd_block2_post_op_regs(bd_block2);
