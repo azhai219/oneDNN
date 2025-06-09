@@ -319,13 +319,13 @@ struct zero_points_t : public quant_entries_t {
     }
 
     static zero_points_t deserialize(deserializer_t &d);
-    status_t set(int arg, int mask) {
+    status_t set(int arg, int mask) override {
         return quant_entries_t::set(arg, mask, default_data_type_, 0, {});
     }
     status_t set(int arg, int mask, data_type_t data_type, int group_ndims,
-            const dims_t group_dims);
+            const dims_t group_dims) override;
 
-    status_t set(int arg, const quant_entry_t &other) {
+    status_t set(int arg, const quant_entry_t &other) override {
         return quant_entries_t::set(arg, other);
     }
 private:
