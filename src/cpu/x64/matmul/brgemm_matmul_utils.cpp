@@ -396,7 +396,7 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_tags(memory_desc_t &A_md,
                 = (this->is_bf16() || this->is_f32() || this->is_bf32()
                           || this->is_f16() || this->is_f32_f16()
                           || this->is_f32_bf16() || this->is_bf16_with_int_wei()
-                          || this->is_f16_with_int_wei() || this->is_tf32()
+                          || this->is_f16_with_int_wei()
                           || this->is_f32_with_int_wei())
                 && !xf16_avx2_vnni_2;
         bgmmc.src_tag = is_adbc_allowed
@@ -515,7 +515,7 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
     // Note: bf32 assumes f32 blocking
     if (this->is_f32() || this->is_bf32() || this->is_f16()
             || this->is_f32_f16() || this->is_f32_bf16()
-            || this->is_f16_with_int_wei() || this->is_tf32()
+            || this->is_f16_with_int_wei()
             || this->is_f32_with_int_wei())
         switch (n_blk) {
             case 64: return bgmmc.ndims == 3 ? aCB16b64c : BA16a64b;
