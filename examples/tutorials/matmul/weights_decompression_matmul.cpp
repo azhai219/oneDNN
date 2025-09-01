@@ -94,11 +94,17 @@ matmul::primitive_desc matmul_pd_create(
     // runtime parameters
     primitive_attr attr;
     // Set scales with multiple scales along K and N dimensions and with groups along K.
+    int mask_sc = (1 << 0) + (1 << 1);
+    int group_sc = (1 << 0) + (1 << 1);
     attr.set_scales(DNNL_ARG_WEIGHTS,
             /* mask */ (1 << 0) + (1 << 1), {G, 1}, memory::data_type::f16);
     // Set a single zero point with s8 data type.
+    int mask_zp = (1<<0) + (1<<1);
+    int group_zp = (1<<0) + (1<<1);
     attr.set_zero_points(
-            DNNL_ARG_WEIGHTS, /* mask */ 0, {}, memory::data_type::s8);
+            DNNL_ARG_WEIGHTS, mask_zp, {G, 1}, memory::data_type::s8);
+    // attr.set_zero_points(
+    //         DNNL_ARG_WEIGHTS, /* mask */ 0, {}, memory::data_type::s8);
     // Set fpmath mode with `apply_to_int=true` to apply fpmath mode behavior to
     // integral primitives (in this example, matmul).
     attr.set_fpmath_mode(fpmath_mode::f16, true);
@@ -119,10 +125,14 @@ void prepare_input(memory &A_f32_mem, memory &sc_B_mem, memory &zp_B_mem) {
     std::vector<float> sc_B(NUM_G * N);
     init_vector(sc_B);
 
-    int8_t zp_B = 2;
+    std::vector<int8_t> zp_B(NUM_G * N, 2);
+    // init_vector(zp_B);
+
+    // int8_t zp_B = 2;
 
     write_to_dnnl_memory(A_f32.data(), A_f32_mem);
-    write_to_dnnl_memory(&zp_B, zp_B_mem);
+    // write_to_dnnl_memory(&zp_B, zp_B_mem);
+    write_to_dnnl_memory(zp_B.data(), zp_B_mem);
     write_to_dnnl_memory(sc_B.data(), sc_B_mem);
 }
 
@@ -133,7 +143,8 @@ void infer(const matmul &matmul_p, int64_t M, int64_t N, int64_t K, int64_t G,
     // De-quantization parameters (eg. Scale and Shift)
     const int64_t n_groups = K / G;
     memory sc_B_mem({{N, n_groups}, memory::data_type::f16, {1, N}}, eng);
-    memory zp_B_mem({{1}, memory::data_type::s8, {1}}, eng);
+    // memory zp_B_mem({{1}, memory::data_type::s8, {1}}, eng);
+    memory zp_B_mem({{N, n_groups}, memory::data_type::s8, {1, N}}, eng);
 
     // the function below fills dnnl::memory with some values
     // these memories, typically, come from the previous layers / operations
