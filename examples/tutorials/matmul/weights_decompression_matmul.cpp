@@ -89,22 +89,22 @@ int number_of_runs = 1;
 matmul::primitive_desc matmul_pd_create(
         int64_t M, int64_t N, int64_t K, int64_t G, const engine &eng) {
 
-    memory::desc a_md({M, K}, memory::data_type::f32, {K, 1}); // M x K layout
+    memory::desc a_md({M, K}, memory::data_type::f16, {K, 1}); // M x K layout
     memory::desc b_md({K, N}, memory::data_type::s8, memory::format_tag::any);
-    memory::desc c_md({M, N}, memory::data_type::f32, {N, 1}); // M x N layout
+    memory::desc c_md({M, N}, memory::data_type::f16, {N, 1}); // M x N layout
 
     // Create attributes and indicate that the alpha and zero points are
     // runtime parameters
     primitive_attr attr;
     // Set scales with multiple scales along K and N dimensions and with groups along K.
     attr.set_scales(DNNL_ARG_WEIGHTS,
-            /* mask */ (1 << 0) + (1 << 1), {G, 1}, memory::data_type::f32);
+            /* mask */ (1 << 0) + (1 << 1), {G, 1}, memory::data_type::f16);
     // Set a single zero point with s8 data type.
     attr.set_zero_points(
             DNNL_ARG_WEIGHTS, /* mask */ 0, {}, memory::data_type::s8);
     // Set fpmath mode with `apply_to_int=true` to apply fpmath mode behavior to
     // integral primitives (in this example, matmul).
-    attr.set_fpmath_mode(fpmath_mode::bf16, true);
+    attr.set_fpmath_mode(fpmath_mode::f16, true);
 
     // Create a MatMul primitive descriptor
     return matmul::primitive_desc(eng, a_md, b_md, c_md, attr);
@@ -132,10 +132,10 @@ void prepare_input(memory &A_f32_mem, memory &sc_B_mem, memory &zp_B_mem) {
 void infer(const matmul &matmul_p, int64_t M, int64_t N, int64_t K, int64_t G,
         const memory &B_s8_mem, const engine &eng) {
     // input of the current layer / operation
-    memory A_f32_mem({{M, K}, memory::data_type::f32, {K, 1}}, eng);
+    memory A_f32_mem({{M, K}, memory::data_type::f16, {K, 1}}, eng);
     // De-quantization parameters (eg. Scale and Shift)
     const int64_t n_groups = K / G;
-    memory sc_B_mem({{N, n_groups}, memory::data_type::f32, {1, N}}, eng);
+    memory sc_B_mem({{N, n_groups}, memory::data_type::f16, {1, N}}, eng);
     memory zp_B_mem({{1}, memory::data_type::s8, {1}}, eng);
 
     // the function below fills dnnl::memory with some values
@@ -144,16 +144,16 @@ void infer(const matmul &matmul_p, int64_t M, int64_t N, int64_t K, int64_t G,
     prepare_input(A_f32_mem, sc_B_mem, zp_B_mem);
 
     // output - no initialization required
-    memory C_f32_mem({{M, N}, memory::data_type::f32, {N, 1}}, eng);
+    memory C_f32_mem({{M, N}, memory::data_type::f16, {N, 1}}, eng);
 
     stream s(eng);
     for (int run = 0; run < number_of_runs; ++run)
         matmul_p.execute(s,
-                {{DNNL_ARG_SRC, A_f32_mem}, {DNNL_ARG_WEIGHTS, B_s8_mem},
-                        {DNNL_ARG_DST, C_f32_mem},
-                        {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, sc_B_mem},
-                        {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS,
-                                zp_B_mem}});
+                {{DNNL_ARG_SRC,                                 A_f32_mem},
+                 {DNNL_ARG_WEIGHTS,                             B_s8_mem},
+                 {DNNL_ARG_DST,                                 C_f32_mem},
+                 {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS,      sc_B_mem},
+                 {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS, zp_B_mem}});
     s.wait();
 }
 
