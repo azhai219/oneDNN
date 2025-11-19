@@ -210,7 +210,6 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
             : nullptr;
 
     const int ic_chunks = div_up(jbgp.nb_ic, jbgp.nb_ic_blocking);
-
     const bool are_post_ops_applicable = one_of(true, jbgp.with_sum,
             jbgp.with_bias, jbgp.with_src_scales, jbgp.with_wei_scales,
             jbgp.with_dst_scales, jbgp.with_eltwise, jbgp.with_binary,
@@ -493,7 +492,7 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
                         wei_scales ? reinterpret_cast<const char *>(wei_scales)
                                         + jbgp.is_oc_scale * oc * sizeof(float)
                                    : nullptr,
-                        dst_scales};
+                        dst_scales_ptr};
 
                 brgemm_kernel_execute_postops(brg_kernel, gemm_batch,
                         addr_batch, (void *)ptr_C, (void *)ptr_D, post_ops_data,
@@ -631,7 +630,7 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
                         wei_scales ? reinterpret_cast<const char *>(wei_scales)
                                         + jbgp.is_oc_scale * oc * sizeof(float)
                                    : nullptr,
-                        dst_scales};
+                        dst_scales_ptr};
 
                 brgemm_kernel_execute_postops(brg_kernel_ic_tail, 1, addr_batch,
                         (void *)ptr_C, (void *)ptr_D, post_ops_data, scratch, nullptr, wei_scales + wei_scales_offset, wei_zero_points + wei_zero_points_offset,
@@ -685,7 +684,7 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
             const float *dst_scales_ptr
                     = static_cast<const float *>(dst_scales);
             dst_scales_inv_ptr
-                    = scratchpad.template get<float>(key_conv_dst_scales)
+                    = scratchpad.template get<float>(key_iprod_dst_scales)
                     + ithr;
             dst_scales_inv_ptr[0] = 1.f / dst_scales_ptr[0];
         }
