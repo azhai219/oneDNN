@@ -201,10 +201,12 @@ private:
     const reg64_t reg_zp_a_input_shift = r9;
 
     const reg64_t reg_BS_loop = rax;
-    const reg64_t reg_rdb_loop = rbx;
+    //const reg64_t reg_rdb_loop = rbx;
+    const reg64_savable_t reg_rdb_loop {regscratchpad_, rbx};
     const reg64_t reg_BS = abi_not_param1;
 
-    const reg64_t reg_a_offset = rdx;
+    //const reg64_t reg_a_offset = rdx;
+    const reg64_savable_t reg_a_offset {regscratchpad_, rdx};
     const reg64_t reg_b_offset = rsi;
 
     const reg64_savable_t reg_aux1_A {regscratchpad_, rbp};
@@ -225,9 +227,6 @@ private:
     const reg64_savable_t reg_zp_c_values {regscratchpad_, rbx, r31};
     const reg64_savable_t reg_aux_zp_c_values {regscratchpad_, rbx};
     const reg64_savable_t reg_D_shift_bytes {regscratchpad_, rbx};
-    const reg64_savable_t reg_wei_zp {regscratchpad_, rbx};
-    const reg64_savable_t reg_aux_wei_zp {regscratchpad_, rbx};
-    const reg64_savable_t reg_ic {regscratchpad_, rbx};
     const reg64_savable_t reg_aux_src_scales {regscratchpad_, r10};
     const reg64_savable_t reg_aux_wei_scales {regscratchpad_, r10};
     const reg64_savable_t reg_aux_scale_adjust {regscratchpad_, r10};
@@ -243,7 +242,6 @@ private:
     const reg64_savable_t reg_buf_aux {regscratchpad_, abi_param1};
     const reg64_savable_backup_t reg_buf_aux_backup {reg_buf_aux};
     const reg64_savable_t reg_aux_compensation {regscratchpad_, rbx, r29};
-    const reg64_savable_t reg_src_grouped_sum {regscratchpad_, rbx};
 
     const reg64_savable_t reg_D {regscratchpad_, r11};
     const reg64_savable_t reg_aux_D {regscratchpad_, rax, r27};
@@ -261,27 +259,22 @@ private:
     const reg64_t reg_converted_stride = rbx;
     const reg64_savable_t reg64_fp8_aux {regscratchpad_, r13};
 
-    constexpr static int reg_wei_scales_offs_ = 256;
-    constexpr static int reg_aux_wei_scales_offs_ = 264;
-    constexpr static int reg_wei_zero_points_offs_ = 272;
-    constexpr static int reg_aux_wei_zero_points_offs_ = 280;
-    constexpr static int reg_ic_offs_ = 288;
-    constexpr static int reg_aux2_D_offs_ = 296;
-    constexpr static int reg_aux2_wei_scales_offs_ = 304;
-    constexpr static int reg_aux2_wei_zero_points_offs_ = 312;
-    constexpr static int reg_aux_ic_offs_ = 320;
-    constexpr static int reg_reg_a_offset_offs_ = 328;
-    constexpr static int reg_src_scales_offs_ = 336;
-    constexpr static int reg_aux_src_scales_offs_ = 344;
-    constexpr static int reg_aux2_src_scales_offs_ = 352;
-    constexpr static int reg_src_grouped_sum_offs_ = 360;
-    constexpr static int reg_aux_src_grouped_sum_offs_ = 368;
-    constexpr static int reg_aux2_src_grouped_sum_offs_ = 376;
-    // these are used for FP8 as temporary push/pop spaces
-    constexpr static int reg_val_tmp_1_ = 384;
-    constexpr static int reg_val_tmp_2_ = 392;
-    constexpr static int stack_space_needed_ = 400;
-
+    //new reg64 for decomp
+    const reg64_savable_t reg_wei_zp {regscratchpad_, rbx};
+    const reg64_savable_t reg_aux_wei_zp {regscratchpad_, rbx};
+    const reg64_savable_t reg_aux2_wei_zp {regscratchpad_, rbx};
+    const reg64_savable_t reg_ic {regscratchpad_, rbx};
+    const reg64_savable_t reg_aux2_D {regscratchpad_, rbx};
+    const reg64_savable_t reg_wei_dscales {regscratchpad_, rbx};
+    const reg64_savable_t reg_aux_wei_dscales {regscratchpad_, rbx};
+    const reg64_savable_t reg_aux2_wei_dscales {regscratchpad_, rbx};
+    const reg64_savable_t reg_aux_ic {regscratchpad_, rbx};
+    const reg64_savable_t reg_src_dscales {regscratchpad_, rbx};
+    const reg64_savable_t reg_aux_src_dscales {regscratchpad_, rbx};
+    const reg64_savable_t reg_aux2_src_dscales {regscratchpad_, rbx};
+    const reg64_savable_t reg_src_grouped_sum {regscratchpad_, rbx};
+    const reg64_savable_t reg_aux_src_grouped_sum {regscratchpad_, rbx};
+    const reg64_savable_t reg_aux2_src_grouped_sum {regscratchpad_, rbx};
 
     bool is_ldb_loop_ = false;
     bool with_binary_non_scalar_bcast_ = false;
@@ -516,6 +509,7 @@ private:
     dim_t bdb_compensation_offset(dim_t bd_block2) const noexcept;
     dim_t bd_compensation_offset(dim_t ld, dim_t bd) const noexcept;
     dim_t wei_scales_offset(dim_t ld, bool is_tail = false) const noexcept;
+    dim_t decomp_wei_scales_offset(dim_t ld, bool is_tail = false) const noexcept;
     dim_t zp_comp_a_offset(dim_t ld, bool is_tail = false) const noexcept;
     dim_t bd_zp_comp_a_offset(dim_t ld, dim_t bd) const noexcept;
     dim_t bdb_zp_comp_a_offset(dim_t bd_block2) const noexcept;
@@ -694,6 +688,13 @@ dim_t jit_brgemm_kernel_t<Wmm>::zp_comp_a_offset(
         dim_t ld, bool is_tail) const noexcept {
     return (is_tail) ? sizeof(int32_t) * brg.ldb_tail
                      : sizeof(int32_t) * ld * brg.ld_block;
+}
+
+template <typename Wmm>
+dim_t jit_brgemm_kernel_t<Wmm>::decomp_wei_scales_offset(
+        dim_t ld, bool is_tail) const noexcept {
+    return (is_tail) ? types::data_type_size(brg.wei_decomp_scales_dt) * brg.ldb_tail
+                     : types::data_type_size(brg.wei_decomp_scales_dt) * ld * brg.ld_block;
 }
 
 template <typename Wmm>
@@ -897,6 +898,7 @@ void jit_brgemm_kernel_t<Wmm>::ldb_regs_shift(dim_t ld_block2, bool is_tail) {
                           : compensations_offset(ld_block2));
         reg_aux_compensation.save();
     }
+
     if (brg.with_wei_scales) {
         reg_aux_wei_scales.restore();
         add(reg_aux_wei_scales,
@@ -906,16 +908,16 @@ void jit_brgemm_kernel_t<Wmm>::ldb_regs_shift(dim_t ld_block2, bool is_tail) {
     }
 
     if (brg.with_wei_decomp_scales && brg.wei_decomp_scales_stride != 0) {
-        mov(reg_aux_wei_scales, ptr[rsp + reg_aux_wei_scales_offs_]);
-        add(reg_aux_wei_scales, (is_tail) ? wei_scales_offset(1, true) : wei_scales_offset(ld_block2));
-        mov(ptr[rsp + reg_aux_wei_scales_offs_], reg_aux_wei_scales);
-        mov(ptr[rsp + reg_aux2_wei_scales_offs_], reg_aux_wei_scales);
+        reg_aux_wei_dscales.restore();
+        add(reg_aux_wei_dscales, (is_tail) ? decomp_wei_scales_offset(1, true) : decomp_wei_scales_offset(ld_block2));
+        reg_aux_wei_dscales.save();
+        reg_aux_wei_dscales.saveTo(reg_aux2_wei_dscales);
     }
     if (brg.with_wei_decomp_zero_points && brg.wei_decomp_zero_points_stride != 0) {
-        mov(reg_aux_wei_zp, ptr[rsp + reg_aux_wei_zero_points_offs_]);
+        reg_aux_wei_zp.restore();
         add(reg_aux_wei_zp, (is_tail) ? wei_zp_offset(1, true) : wei_zp_offset(ld_block2));
-        mov(ptr[rsp + reg_aux_wei_zero_points_offs_], reg_aux_wei_zp);
-        mov(ptr[rsp + reg_aux2_wei_zero_points_offs_], reg_aux_wei_zp);
+        reg_aux_wei_zp.save();
+        reg_aux_wei_zp.saveTo(reg_aux2_wei_zp);
     }
 
     if (brg.zp_type_a != brgemm_broadcast_t::none) {
@@ -971,6 +973,7 @@ void jit_brgemm_kernel_t<Wmm>::copy_post_ops_stack_values_to_aux(
             reg_buf.restore();
             reg_buf.saveTo(reg_aux_compensation);
         }
+
         if (brg.with_wei_scales) {
             reg_wei_scales.restore();
             reg_wei_scales.saveTo(reg_aux_wei_scales);
@@ -987,26 +990,27 @@ void jit_brgemm_kernel_t<Wmm>::copy_post_ops_stack_values_to_aux(
         }
 
         if (brg.with_wei_decomp_scales) {
-            mov(reg_wei_scales, ptr[rsp + reg_wei_scales_offs_]);
-            mov(ptr[rsp + reg_aux_wei_scales_offs_], reg_wei_scales);
-            mov(ptr[rsp + reg_aux2_wei_scales_offs_], reg_wei_scales);
+            reg_wei_dscales.restore();
+            reg_wei_dscales.saveTo(reg_aux_wei_dscales);
+            reg_wei_dscales.saveTo(reg_aux2_wei_dscales);
         }
+
         if (brg.with_wei_decomp_zero_points) {
-            mov(reg_wei_zp, ptr[rsp + reg_wei_zero_points_offs_]);
-            mov(ptr[rsp + reg_aux_wei_zero_points_offs_], reg_wei_zp);
-            mov(ptr[rsp + reg_aux2_wei_zero_points_offs_], reg_wei_zp);
+            reg_wei_zp.restore();
+            reg_wei_zp.saveTo(reg_aux_wei_zp);
+            reg_wei_zp.saveTo(reg_aux2_wei_zp);
         }
 
     }
     if (brg.with_src_dyn_quant) {
-        mov(reg_src_scales, ptr[rsp + reg_src_scales_offs_]);
-        mov(ptr[rsp + reg_aux_src_scales_offs_], reg_src_scales);
-        mov(ptr[rsp + reg_aux2_src_scales_offs_], reg_src_scales);
+        reg_src_dscales.restore();
+        reg_src_dscales.saveTo(reg_aux_src_dscales);
+        reg_src_dscales.saveTo(reg_aux2_src_dscales);
 
         if (brg.with_wei_decomp_zero_points) {
-            mov(reg_src_grouped_sum, ptr[rsp + reg_src_grouped_sum_offs_]);
-            mov(ptr[rsp + reg_aux_src_grouped_sum_offs_], reg_src_grouped_sum);
-            mov(ptr[rsp + reg_aux2_src_grouped_sum_offs_], reg_src_grouped_sum);
+            reg_src_grouped_sum.restore();
+            reg_src_grouped_sum.saveTo(reg_aux_src_grouped_sum);
+            reg_src_grouped_sum.saveTo(reg_aux2_src_grouped_sum);
         }
     }
     if (brg.zp_type_b != brgemm_broadcast_t::none) {
@@ -1069,22 +1073,22 @@ void jit_brgemm_kernel_t<Wmm>::read_params() {
     }
 
     if (brg.with_wei_decomp) {
-        mov(reg_wei_scales, ptr[param1 + GET_OFF(ptr_wei_scales)]);
-        mov(ptr[rsp + reg_wei_scales_offs_], reg_wei_scales);
+        mov(reg_wei_dscales, ptr[param1 + GET_OFF(ptr_wei_dscales)]);
+        reg_wei_dscales.save();
 
         mov(reg_wei_zp, ptr[param1 + GET_OFF(ptr_wei_zero_points)]);
-        mov(ptr[rsp + reg_wei_zero_points_offs_], reg_wei_zp);
+        reg_wei_zp.save();
 
         mov(reg_ic, ptr[param1 + GET_OFF(ic)]);
-        mov(ptr[rsp + reg_ic_offs_], reg_ic);
+        reg_ic.save();
     }
 
     if (brg.with_src_dyn_quant) {
-        mov(reg_src_scales, ptr[param1 + GET_OFF(ptr_src_scales)]);
-        mov(ptr[rsp + reg_src_scales_offs_], reg_src_scales);
+        mov(reg_src_dscales, ptr[param1 + GET_OFF(ptr_src_dscales)]);
+        reg_src_dscales.save();
 
         mov(reg_src_grouped_sum, ptr[param1 + GET_OFF(ptr_src_grouped_sum)]);
-        mov(ptr[rsp + reg_src_grouped_sum_offs_], reg_src_grouped_sum);
+        reg_src_grouped_sum.save();
     }
 
     if (brg.zp_type_c != brgemm_broadcast_t::none) {
@@ -1463,7 +1467,9 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
         dq2ps_cvt_done = true;
     }
 
-    if (brg.with_wei_scales) {
+    // in decomp case, the wei scales alread be used before matmul
+    // so not need to use it again
+    if (brg.with_wei_scales && (!brg.with_wei_decomp)) {
         reg_aux_wei_scales.restore();
         for (dim_t ld = 0; ld < ld_block2; ld++) {
             const auto addr = ptr[reg_aux_wei_scales + wei_scales_offset(ld)];
@@ -2581,7 +2587,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_dyn_quant(dim_t bd_block2,
     reg_bdb_loop.save();
     reg_ldb_loop.save();
 
-    reg64_t reg_ptr; reg_bdb_loop.restoreTo(reg_ptr);
+    auto& reg_ptr = reg_bdb_loop;
     auto vmm_mask_low = Vmm(isa_num_vregs(brg.isa_impl) - 1);
 
     if (brg.dt_b == data_type::u4) {
@@ -2662,13 +2668,13 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_dyn_quant(dim_t bd_block2,
         return load(ld);
     };
 
-    reg64_t reg_local_wei_zp; reg_ldb_loop.restoreTo(reg_local_wei_zp);
-    reg64_t reg_local_src_grouped_sum; reg_bdb_loop.restoreTo(reg_local_src_grouped_sum);
+    auto& reg_local_wei_zp = reg_ldb_loop;
+    auto& reg_local_src_grouped_sum = reg_bdb_loop;
     auto vmm_tmp = Vmm(isa_num_vregs(brg.isa_impl) - 1);
     auto vmm_src_grouped_sum = bcst();
 
     if (brg.with_wei_decomp_zero_points) {
-        mov(reg_local_wei_zp, ptr[rsp + reg_aux2_wei_zero_points_offs_ + accums_stack_space]);
+        mov(reg_local_wei_zp, ptr[rsp + reg_aux2_wei_zp.booking() + accums_stack_space]);
         if (brg.wei_decomp_zero_points_stride == 0) {
             Vmm vmm_zp = vmm_zero_point(0);
             auto xmm_zp = Xmm(vmm_zp.getIdx());
@@ -2681,7 +2687,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_dyn_quant(dim_t bd_block2,
             uni_vbroadcastss(vmm_zp, xmm_zp);
         }
 
-        mov(reg_local_src_grouped_sum, ptr[rsp + reg_aux2_src_grouped_sum_offs_ + accums_stack_space]);
+        mov(reg_local_src_grouped_sum, ptr[rsp + reg_aux2_src_grouped_sum.booking() + accums_stack_space]);
         for (int bd = bd_b; bd < bd_e; bd++) {
             uni_vbroadcastss(vmm_src_grouped_sum, ptr[reg_local_src_grouped_sum + bd * brg.src_grouped_sum_stride * sizeof(int32_t)]);
             for (int ld = 0; ld < ld_block2; ld++) {
@@ -2701,12 +2707,12 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_dyn_quant(dim_t bd_block2,
         return load(ld);
     };
 
-    reg64_t reg_local_src_scales; reg_ldb_loop.restoreTo(reg_local_src_scales);
-    reg64_t reg_local_wei_scales; reg_bdb_loop.restoreTo(reg_local_wei_scales);
+    auto& reg_local_src_scales = reg_ldb_loop;
+    auto& reg_local_wei_scales = reg_bdb_loop;
     auto vmm_src_scales = bcst();
 
-    mov(reg_local_wei_scales, ptr[rsp + reg_aux2_wei_scales_offs_ + accums_stack_space]);
-    mov(reg_local_src_scales, ptr[rsp + reg_aux2_src_scales_offs_ + accums_stack_space]);
+    mov(reg_local_wei_scales, ptr[rsp + reg_aux2_wei_dscales.booking() + accums_stack_space]);
+    mov(reg_local_src_scales, ptr[rsp + reg_aux2_src_dscales.booking() + accums_stack_space]);
     if (brg.wei_decomp_scales_stride == 0) {
         uni_vbroadcastss(wei_scale(0), ptr[reg_local_wei_scales]);
     }
@@ -2931,9 +2937,9 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
 
         } else {
             if (brg.with_wei_decomp) {
-                reg64_t reg_local_wei_scales; reg_bdb_loop.restoreTo(reg_local_wei_scales);
-                reg64_t reg_local_wei_zp; reg_ldb_loop.restoreTo(reg_local_wei_zp);
-                auto reg_ptr = reg_local_wei_zp;
+                auto& reg_local_wei_scales = reg_bdb_loop;
+                auto& reg_local_wei_zp = reg_ldb_loop;
+                auto& reg_ptr = reg_local_wei_zp;
 
                 auto accm_tmp = [&](int ld_block, int bd, int ld) {
                     int idx = max_effective_vregs - 1 - 2 * (brg.ld_block2 * brg.bd_block) - ld;
@@ -2984,9 +2990,6 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                     }
                 };
 
-                reg_bdb_loop.save();
-                reg_ldb_loop.save();
-
                 auto load_scales = [&](Vmm vmm_scales, Xbyak::Address addr) {
                     if (brg.wei_decomp_scales_stride == 0) {
                         switch (brg.wei_decomp_scales_dt) {
@@ -3021,8 +3024,8 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                     }
                 };
 
-                reg_bdb_loop.restore();
-                reg_ldb_loop.restore();
+                reg_bdb_loop.save();
+                reg_ldb_loop.save();
 
                 auto vmm_zero_points = Vmm(isa_num_vregs(brg.isa_impl) - 1);
                 auto vmm_mask8 = Vmm(isa_num_vregs(brg.isa_impl) - 1);
@@ -3106,9 +3109,8 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                         vmm_zero_points = Vmm(isa_num_vregs(brg.isa_impl) - 2);
                     }
                 }
-
-                mov(reg_local_wei_scales, ptr[rsp + reg_aux2_wei_scales_offs_]);
-                mov(reg_local_wei_zp, ptr[rsp + reg_aux2_wei_zero_points_offs_]);
+                reg_aux2_wei_dscales.restoreTo(reg_local_wei_scales);
+                reg_aux2_wei_zp.restoreTo(reg_local_wei_zp);
 
                 if (brg.with_wei_decomp_zero_points && brg.wei_decomp_zero_points_stride == 0) {
                     load_zero_points(vmm_zero_points, ptr[reg_local_wei_zp]);
@@ -3331,13 +3333,12 @@ void jit_brgemm_kernel_t<Wmm>::bs_loop(dim_t bd_block2, bool is_bdb_tail,
     auto ic_group_shift_generic = [&]() {
         if ((brg.with_grouped_wei_decomp && (brg.wei_decomp_scales_stride != 0 || brg.wei_decomp_zero_points_stride != 0))
                 || brg.with_src_dyn_quant) {
-            reg64_t reg_local_ic; reg_aux_D.restoreTo(reg_local_ic);
-            reg64_t reg_local_wei_params; reg_bdb_loop.restoreTo(reg_local_wei_params);
-            reg64_t reg_local_ic_group; reg_ldb_loop.restoreTo(reg_local_ic_group);
-
+            auto& reg_local_ic = reg_aux_D;
+            auto& reg_local_wei_params = reg_bdb_loop;
+            auto& reg_local_ic_group = reg_ldb_loop;
 
             auto ic_group_shift = [&](int src_offs, int dst_offs, int group_size, int stride) {
-                mov(reg_local_ic, ptr[rsp + reg_aux_ic_offs_]);
+                reg_aux_ic.restoreTo(reg_local_ic);
                 mov(reg_local_ic_group, group_size);
                 xor_(rdx, rdx);
                 idiv(reg_local_ic_group);
@@ -3349,47 +3350,45 @@ void jit_brgemm_kernel_t<Wmm>::bs_loop(dim_t bd_block2, bool is_bdb_tail,
             };
 
             reg_bdb_loop.save();
-            reg_aux_D.save();
+            reg_aux_D.saveTo(reg_aux2_D);
             reg_ldb_loop.save();
-            mov(ptr[rsp + reg_reg_a_offset_offs_], reg_a_offset); // preserve rdx for idiv
+            reg_a_offset.save(); // preserve rdx for idiv
 
             if (brg.with_wei_decomp_scales && brg.wei_decomp_scales_stride != 0) {
-                ic_group_shift(reg_aux_wei_scales_offs_, reg_aux2_wei_scales_offs_,
+                ic_group_shift(reg_aux_wei_dscales.booking(), reg_aux2_wei_dscales.booking(),
                                 brg.wei_decomp_scales_group_size, brg.wei_decomp_scales_stride * types::data_type_size(brg.wei_decomp_scales_dt));
             }
 
             if (brg.with_wei_decomp_zero_points && brg.wei_decomp_zero_points_stride != 0) {
-                ic_group_shift(reg_aux_wei_zero_points_offs_, reg_aux2_wei_zero_points_offs_,
+                ic_group_shift(reg_aux_wei_zp.booking(), reg_aux2_wei_zp.booking(),
                                 brg.wei_decomp_zero_points_group_size, brg.wei_decomp_zero_points_stride * types::data_type_size(brg.wei_decomp_zero_points_dt));
             }
 
             if (brg.with_src_dyn_quant) {
-                ic_group_shift(reg_aux_src_scales_offs_, reg_aux2_src_scales_offs_,
+                ic_group_shift(reg_aux_src_dscales.booking(), reg_aux2_src_dscales.booking(),
                                 brg.src_scales_group_size, sizeof(float));
 
                 if (brg.with_wei_decomp_zero_points) {
-                    ic_group_shift(reg_aux_src_grouped_sum_offs_, reg_aux2_src_grouped_sum_offs_,
+                    ic_group_shift(reg_aux_src_grouped_sum.booking(), reg_aux2_src_grouped_sum.booking(),
                                 brg.src_sum_group_size, sizeof(int32_t));
                 }
             }
-
-            mov(reg_local_ic, ptr[rsp + reg_aux_ic_offs_]);
+            reg_aux_ic.restoreTo(reg_local_ic);
             add(reg_local_ic, brg.rd_block);
-            mov(ptr[rsp + reg_aux_ic_offs_], reg_local_ic);
+            reg_local_ic.saveTo(reg_aux_ic);
 
             reg_bdb_loop.restore();
-            reg_aux_D.restore();
+            reg_aux2_D.restoreTo(reg_aux_D);
             reg_ldb_loop.restore();
-            mov(reg_a_offset, ptr[rsp + reg_reg_a_offset_offs_]);
+            reg_a_offset.restore();
         }
     };
 
     auto ic_group_shift_opt = [&](int rb) {
         if ((brg.with_grouped_wei_decomp && (brg.wei_decomp_scales_stride != 0 || brg.wei_decomp_zero_points_stride != 0))
                 || brg.with_src_dyn_quant) {
-            reg64_savable_t tmp_reg_rdb_loop {regscratchpad_, reg_rdb_loop};
-            tmp_reg_rdb_loop.save();
-            auto reg_ptr = reg_rdb_loop;
+            reg_rdb_loop.saveTo(reg_bdb_loop);
+            auto& reg_ptr = reg_rdb_loop;
 
             auto ic_group_shift = [&](int src_offs, int dst_offs, int group_size, int stride) {
                 if ((rb + 1) * brg.rd_block % group_size == 0) {
@@ -3400,33 +3399,32 @@ void jit_brgemm_kernel_t<Wmm>::bs_loop(dim_t bd_block2, bool is_bdb_tail,
             };
 
             if (brg.with_wei_decomp_scales && brg.wei_decomp_scales_stride != 0) {
-                ic_group_shift(reg_aux2_wei_scales_offs_, reg_aux2_wei_scales_offs_,
+                ic_group_shift(reg_aux2_wei_dscales.booking(), reg_aux2_wei_dscales.booking(),
                                 brg.wei_decomp_scales_group_size, brg.wei_decomp_scales_stride * types::data_type_size(brg.wei_decomp_scales_dt));
             }
 
             if (brg.with_wei_decomp_zero_points && brg.wei_decomp_zero_points_stride != 0) {
-                ic_group_shift(reg_aux2_wei_zero_points_offs_, reg_aux2_wei_zero_points_offs_,
+                ic_group_shift(reg_aux2_wei_zp.booking(), reg_aux2_wei_zp.booking(),
                                 brg.wei_decomp_zero_points_group_size, brg.wei_decomp_zero_points_stride * types::data_type_size(brg.wei_decomp_zero_points_dt));
             }
 
             if (brg.with_src_dyn_quant) {
-                ic_group_shift(reg_aux2_src_scales_offs_, reg_aux2_src_scales_offs_,
+                ic_group_shift(reg_aux2_src_dscales.booking(), reg_aux2_src_dscales.booking(),
                                 brg.src_scales_group_size, sizeof(float));
 
                 if (brg.with_wei_decomp_zero_points) {
-                    ic_group_shift(reg_aux2_src_grouped_sum_offs_, reg_aux2_src_grouped_sum_offs_,
+                    ic_group_shift(reg_aux2_src_grouped_sum.booking(), reg_aux2_src_grouped_sum.booking(),
                                 brg.src_sum_group_size, sizeof(int32_t));
                 }
             }
-
-            tmp_reg_rdb_loop.restore();
+            reg_bdb_loop.restoreTo(reg_rdb_loop);
         }
     };
 
     auto bs_loop_body = [&](dim_t vpad, bool last_bdb) {
         if (brg.with_grouped_wei_decomp) {
-            mov(reg_ic, ptr[rsp + reg_ic_offs_]);
-            mov(ptr[rsp + reg_aux_ic_offs_], reg_ic);
+            reg_ic.restore();
+            reg_ic.saveTo(reg_aux_ic);
         }
 
         set_A_B_matrices();
@@ -3719,13 +3717,13 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
         add(reg_a_offset, bdb_A_offset(bd_block2));
 
         if (brg.with_src_dyn_quant) {
-            mov(reg_src_scales, ptr[rsp + reg_src_scales_offs_]);
-            add(reg_src_scales, bd_block2 * brg.bd_block * brg.src_scales_stride * sizeof(float));
-            mov(ptr[rsp + reg_src_scales_offs_], reg_src_scales);
+            reg_src_dscales.restore();
+            add(reg_src_dscales, bd_block2 * brg.bd_block * brg.src_scales_stride * sizeof(float));
+            reg_src_dscales.save();
 
-            mov(reg_src_grouped_sum, ptr[rsp + reg_src_grouped_sum_offs_]);
+            reg_src_grouped_sum.restore();
             add(reg_src_grouped_sum, bd_block2 * brg.bd_block * brg.src_grouped_sum_stride * sizeof(int32_t));
-            mov(ptr[rsp + reg_src_grouped_sum_offs_], reg_src_grouped_sum);
+            reg_src_grouped_sum.save();
         }
 
         advance_bd_block2_post_op_regs(bd_block2);
