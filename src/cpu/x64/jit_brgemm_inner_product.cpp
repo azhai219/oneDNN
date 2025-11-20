@@ -489,7 +489,7 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
                         post_ops_binary_rhs_arg_vec.data(),
                         static_cast<size_t>(oc), 0, dst, 0, nullptr, nullptr,
                         nullptr, false, 1, false, false, src_scales,
-                        wei_scales ? reinterpret_cast<const char *>(wei_scales)
+                        wei_scales_f ? reinterpret_cast<const char *>(wei_scales_f)
                                         + jbgp.is_oc_scale * oc * sizeof(float)
                                    : nullptr,
                         dst_scales_ptr};
@@ -627,7 +627,7 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
                         post_ops_binary_rhs_arg_vec.data(),
                         static_cast<size_t>(oc), 0, dst, 0, nullptr, nullptr,
                         nullptr, false, 1, false, false, src_scales,
-                        wei_scales ? reinterpret_cast<const char *>(wei_scales)
+                        wei_scales_f ? reinterpret_cast<const char *>(wei_scales_f)
                                         + jbgp.is_oc_scale * oc * sizeof(float)
                                    : nullptr,
                         dst_scales_ptr};
