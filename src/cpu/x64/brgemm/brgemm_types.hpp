@@ -648,8 +648,12 @@ struct brgemm_kernel_params_t {
     size_t skip_accm = 0;
     int32_t zp_a_val = 1;
 
+    // ptr_wei_dscales is used for decomp, it's different from ptr_wei_scales.
+    const void *ptr_wei_dscales = nullptr;
     const void *ptr_wei_zero_points = nullptr;
     const void *ptr_src_grouped_sum = nullptr;
+    // ptr_src_dscales is used for src dynamic quantization, it's different from ptr_src_scales.
+    const void *ptr_src_dscales = nullptr;
     size_t ic;
     dim_t dynamic_LDA = 0;
     dim_t dynamic_LDB = 0;
