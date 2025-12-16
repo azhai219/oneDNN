@@ -25,15 +25,16 @@
 using namespace dnnl::impl::cpu::x64;
 #elif DNNL_AARCH64
 #include "cpu/aarch64/jit_uni_binary.hpp"
-#if defined(DNNL_AARCH64_USE_ACL)
-#include "cpu/aarch64/acl_binary.hpp"
-#endif
 using namespace dnnl::impl::cpu::aarch64;
 #elif DNNL_RV64
 #ifdef DNNL_RISCV_USE_RVV_INTRINSICS
 #include "cpu/rv64/rvv_binary.hpp"
 using namespace dnnl::impl::cpu::rv64;
 #endif // DNNL_RISCV_USE_RVV_INTRINSICS
+#endif
+#if DNNL_USE_ACL
+#include "cpu/acl/acl_binary.hpp"
+using namespace dnnl::impl::cpu::acl;
 #endif
 
 namespace dnnl {
@@ -47,7 +48,7 @@ using namespace dnnl::impl::data_type;
 const impl_list_item_t impl_list[] = REG_BINARY_P({
         CPU_INSTANCE_X64(jit_uni_binary_t)
         CPU_INSTANCE_AARCH64(jit_uni_binary_t)
-        CPU_INSTANCE_AARCH64_ACL(acl_binary_t)
+        CPU_INSTANCE_ACL(acl_binary_t)
         CPU_INSTANCE_RV64GCV(rvv_binary_t)
         CPU_INSTANCE(ref_binary_t)
         /* eol */

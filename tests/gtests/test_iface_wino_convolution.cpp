@@ -53,7 +53,7 @@ protected:
         const bool is_gpu = get_test_engine_kind() == engine::kind::gpu;
         input_f32.wino_supported = is_gpu;
         input_f16.wino_supported = is_gpu;
-#elif DNNL_AARCH64 && defined(DNNL_AARCH64_USE_ACL)
+#elif DNNL_AARCH64 && DNNL_USE_ACL
 #if DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL
         const bool is_cpu = get_test_engine_kind() == engine::kind::cpu;
         input_f32.wino_supported = is_cpu;
@@ -69,7 +69,7 @@ TEST_F(wino_conv_test_t, TestSmallPadding) {
         if (unsupported_data_type(input.dat_dt)
                 || unsupported_data_type(input.wei_dt))
             continue;
-#if defined(DNNL_AARCH64) && defined(DNNL_AARCH64_USE_ACL)
+    #if defined(DNNL_AARCH64) && DNNL_USE_ACL
         if (input.dat_dt == data_type::f16) continue;
 #endif
         memory::desc src_md {{1, 16, 7, 7}, input.dat_dt, tag::any};

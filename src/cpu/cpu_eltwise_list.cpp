@@ -27,15 +27,16 @@ using namespace dnnl::impl::cpu::x64;
 #elif DNNL_AARCH64
 #include "cpu/aarch64/jit_uni_eltwise.hpp"
 #include "cpu/aarch64/jit_uni_eltwise_int.hpp"
-#if defined(DNNL_AARCH64_USE_ACL)
-#include "cpu/aarch64/acl_eltwise.hpp"
-#endif // DNNL_AARCH64_USE_ACL
 using namespace dnnl::impl::cpu::aarch64;
 #elif DNNL_RV64
 #ifdef DNNL_RISCV_USE_RVV_INTRINSICS
 #include "cpu/rv64/rvv_eltwise.hpp"
 using namespace dnnl::impl::cpu::rv64;
 #endif // DNNL_RISCV_USE_RVV_INTRINSICS
+#endif
+#if DNNL_USE_ACL
+#include "cpu/acl/acl_eltwise.hpp"
+using namespace dnnl::impl::cpu::acl;
 #endif
 
 namespace dnnl {
@@ -67,7 +68,7 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
             CPU_INSTANCE_AARCH64(jit_uni_eltwise_int_fwd_t, sve_512, s32)
             CPU_INSTANCE_AARCH64(jit_uni_eltwise_int_fwd_t, sve_512, s8)
             CPU_INSTANCE_AARCH64(jit_uni_eltwise_int_fwd_t, sve_512, u8)
-            CPU_INSTANCE_AARCH64_ACL(acl_eltwise_fwd_t)
+            CPU_INSTANCE_ACL(acl_eltwise_fwd_t)
             CPU_INSTANCE_RV64GCV(rvv_eltwise_fwd_t)
             CPU_INSTANCE(ref_eltwise_fwd_t)
             nullptr,
