@@ -572,7 +572,7 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
                         rt_params.decomp_buffer_ptr = decomp_buf + ic_idx * ic_internal_block * jbgp.oc_block * types::data_type_size(jbgp.wei_dt);
                         rt_params.scales_ptr = wei_scales_ptr + scales_idx * wei_scales_d.dims()[0] * wei_scales_dt_size;
                         rt_params.zero_points_ptr = wei_zero_points_ptr + zero_points_idx * wei_zero_points_d.dims()[0] * wei_zero_points_dt_size;
-                        rt_params.ic_size = nstl::min(group_size, ic_size - icb_idx * group_size);
+                        rt_params.ic_size = nstl::min((int64_t)group_size, (int64_t)(ic_size - icb_idx * group_size));
                         (*brg_weights_decomp_kernel_)(&rt_params);
                     }
                 } else {
