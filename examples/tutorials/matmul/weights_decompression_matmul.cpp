@@ -61,11 +61,19 @@
 
 using namespace dnnl;
 
+#define SYM 1
 namespace {
 
 void init_vector(std::vector<float> &v) {
     std::mt19937 gen;
     std::uniform_real_distribution<float> u(0, 1);
+    for (auto &e : v)
+        e = u(gen);
+}
+
+void init_vector(std::vector<int8_t> &v) {
+    std::mt19937 gen;
+    std::uniform_int_distribution<int8_t> u(0, 10);
     for (auto &e : v)
         e = u(gen);
 }
@@ -83,77 +91,47 @@ int number_of_runs = 1;
 //   dimensions are known. This matrix can be a matrix of compressed weights
 //   in an MLP topology.
 // - The weights scaling values are not known at the primitive creation time.
-matmul::primitive_desc matmul_pd_create(
-        int64_t M, int64_t N, int64_t K, int64_t G, const engine &eng) {
+matmul::primitive_desc matmul_pd_create(int64_t M, int64_t N, int64_t K, int64_t G, const engine &eng, int64_t B) {
 
-    memory::desc a_md({M, K}, memory::data_type::f16, {K, 1}); // M x K layout
-    memory::desc b_md({K, N}, memory::data_type::s8, memory::format_tag::any);
-    memory::desc c_md({M, N}, memory::data_type::f16, {N, 1}); // M x N layout
+    memory::desc a_md({B, M, K}, memory::data_type::f32, memory::format_tag::abc); // M x K layout
+    memory::desc b_md({B, K, N}, memory::data_type::u8, memory::format_tag::any);
+    memory::desc c_md({B, M, N}, memory::data_type::f32, memory::format_tag::abc); // M x N layout
 
     // Create attributes and indicate that the alpha and zero points are
     // runtime parameters
     primitive_attr attr;
     // Set scales with multiple scales along K and N dimensions and with groups along K.
-    int mask_sc = (1 << 0) + (1 << 1);
-    int group_sc = (1 << 0) + (1 << 1);
-    attr.set_scales(DNNL_ARG_WEIGHTS,
-            /* mask */ (1 << 0) + (1 << 1), {G, 1}, memory::data_type::f16);
+    int mask_sc = 0b10;
+    memory::dims group_sc = {G, 1};
+    attr.set_scales(DNNL_ARG_WEIGHTS, /* mask */ mask_sc, group_sc, memory::data_type::f32);
     // Set a single zero point with s8 data type.
-    int mask_zp = (1<<0) + (1<<1);
-    int group_zp = (1<<0) + (1<<1);
-    attr.set_zero_points(
-            DNNL_ARG_WEIGHTS, mask_zp, {G, 1}, memory::data_type::s8);
-    // attr.set_zero_points(
-    //         DNNL_ARG_WEIGHTS, /* mask */ 0, {}, memory::data_type::s8);
+    int mask_zp = 0b10;
+    memory::dims group_zp = {G, 1};
+#ifdef SYM
+    attr.set_zero_points(DNNL_ARG_WEIGHTS, 0,  {}, memory::data_type::u8);
+#else
+    attr.set_zero_points(DNNL_ARG_WEIGHTS, mask_zp,  group_zp, memory::data_type::u8);
+#endif
     // Set fpmath mode with `apply_to_int=true` to apply fpmath mode behavior to
     // integral primitives (in this example, matmul).
-    attr.set_fpmath_mode(fpmath_mode::f16, true);
+    */
+    attr.set_fpmath_mode(fpmath_mode::any, true);
 
     // Create a MatMul primitive descriptor
     return matmul::primitive_desc(eng, a_md, b_md, c_md, attr);
 }
 
 void prepare_input(memory &A_f32_mem, memory &sc_B_mem, memory &zp_B_mem) {
-    int64_t M = A_f32_mem.get_desc().get_dims()[0];
-    int64_t N = sc_B_mem.get_desc().get_dims()[0];
-    int64_t K = A_f32_mem.get_desc().get_dims()[1];
-    int64_t NUM_G = sc_B_mem.get_desc().get_dims()[1];
 
-    std::vector<float> A_f32(M * K);
-    init_vector(A_f32);
-
-    std::vector<float> sc_B(NUM_G * N);
-    init_vector(sc_B);
-
-    std::vector<int8_t> zp_B(NUM_G * N, 2);
-    // init_vector(zp_B);
-
-    // int8_t zp_B = 2;
-
-    write_to_dnnl_memory(A_f32.data(), A_f32_mem);
-    // write_to_dnnl_memory(&zp_B, zp_B_mem);
-    write_to_dnnl_memory(zp_B.data(), zp_B_mem);
-    write_to_dnnl_memory(sc_B.data(), sc_B_mem);
 }
 
-void infer(const matmul &matmul_p, int64_t M, int64_t N, int64_t K, int64_t G,
-        const memory &B_s8_mem, const engine &eng) {
-    // input of the current layer / operation
-    memory A_f32_mem({{M, K}, memory::data_type::f16, {K, 1}}, eng);
-    // De-quantization parameters (eg. Scale and Shift)
-    const int64_t n_groups = K / G;
-    memory sc_B_mem({{N, n_groups}, memory::data_type::f16, {1, N}}, eng);
-    // memory zp_B_mem({{1}, memory::data_type::s8, {1}}, eng);
-    memory zp_B_mem({{N, n_groups}, memory::data_type::s8, {1, N}}, eng);
-
-    // the function below fills dnnl::memory with some values
-    // these memories, typically, come from the previous layers / operations
-    // with meaningful data inside
-    prepare_input(A_f32_mem, sc_B_mem, zp_B_mem);
-
-    // output - no initialization required
-    memory C_f32_mem({{M, N}, memory::data_type::f16, {N, 1}}, eng);
-
+void infer(const matmul &matmul_p,
+          memory& A_f32_mem,
+          const memory &B_s8_mem,
+          memory& sc_B_mem,
+          memory& zp_B_mem,
+          memory& C_f32_mem,
+          const engine &eng) {
     stream s(eng);
     for (int run = 0; run < number_of_runs; ++run)
         matmul_p.execute(s,
@@ -168,32 +146,109 @@ void infer(const matmul &matmul_p, int64_t M, int64_t N, int64_t K, int64_t G,
 void weights_decompression_matmul(engine::kind engine_kind) {
     engine eng(engine_kind, 0);
 
-    const int64_t K = 64;
-    const int64_t N = 1000;
-    const int64_t M = 100;
+    const int64_t B = 2;
+    const int64_t K = 16;
+    const int64_t N = 2;
+    const int64_t M = 2;
     // Quantization Group size for scales. Must be divisible by 32.
-    const int64_t G = K / 2;
+    const int64_t G = K;
 
-    auto matmul_pd = matmul_pd_create(M, N, K, G, eng);
+    auto matmul_pd = matmul_pd_create(M, N, K, G, eng, B);
 
     // Original weights stored as float in a known format
-    std::vector<float> B_f32(K * N);
+    std::vector<float> B_f32(B * K * N);
     init_vector(B_f32);
 
     // Pre-packed weights stored as int8_t
     memory B_s8_mem(matmul_pd.weights_desc(), eng);
-    {
-        stream s(eng);
-        memory B_f32_mem(
-                {{K, N}, memory::data_type::f32, memory::format_tag::ab}, eng);
-        write_to_dnnl_memory(B_f32.data(), B_f32_mem);
-        reorder(B_f32_mem, B_s8_mem).execute(s, B_f32_mem, B_s8_mem);
-        s.wait();
-    }
+    stream s(eng);
+    memory B_f32_mem({{B, K, N}, memory::data_type::f32, memory::format_tag::abc}, eng);
+    write_to_dnnl_memory(B_f32.data(), B_f32_mem);
+    reorder(B_f32_mem, B_s8_mem).execute(s, B_f32_mem, B_s8_mem);
+    s.wait();
 
     matmul matmul_p(matmul_pd);
 
-    infer(matmul_p, M, N, K, G, B_s8_mem, eng);
+    // prepare input
+    // input of the current layer / operation
+    memory A_f32_mem({{B, M, K}, memory::data_type::f32, memory::format_tag::abc}, eng);
+    // De-quantization parameters (eg. Scale and Shift)
+    const int64_t n_groups = K / G;
+    memory sc_B_mem({{B, N, n_groups}, memory::data_type::f32, memory::format_tag::abc}, eng);
+#ifdef SYM
+    memory zp_B_mem({{1}, memory::data_type::u8, {1}}, eng);
+#else
+    memory zp_B_mem({{N, n_groups}, memory::data_type::u8, {1, N}}, eng);
+#endif
+
+    auto sc_dims = sc_B_mem.get_desc().get_dims();
+    auto zp_dims = zp_B_mem.get_desc().get_dims();
+    auto we_dims = B_s8_mem.get_desc().get_dims();
+
+    // the function below fills dnnl::memory with some values
+    // these memories, typically, come from the previous layers / operations
+    // with meaningful data inside
+    // prepare_input(A_f32_mem, sc_B_mem, zp_B_mem);
+
+    // int64_t B = A_f32_mem.get_desc().get_dims()[0];
+    // int64_t M = A_f32_mem.get_desc().get_dims()[1];
+    // int64_t K = A_f32_mem.get_desc().get_dims()[2];
+
+    // int64_t N = sc_B_mem.get_desc().get_dims()[1];
+    int64_t NUM_G = sc_B_mem.get_desc().get_dims()[2];
+
+    std::vector<float> A_f32(B * M * K);
+    init_vector(A_f32);
+
+    std::vector<float> sc_B(B * NUM_G * N);
+    // group_quantize_sym(A_f32, sc_B, 16);
+    init_vector(sc_B);
+
+#ifdef SYM
+    std::vector<int8_t> zp_B = {127};
+#else
+    std::vector<int8_t> zp_B(NUM_G * N, 2);
+    init_vector(zp_B);
+#endif
+
+    // int8_t zp_B = 2;
+
+    write_to_dnnl_memory(A_f32.data(), A_f32_mem);
+    // write_to_dnnl_memory(&zp_B, zp_B_mem);
+    write_to_dnnl_memory(zp_B.data(), zp_B_mem);
+    write_to_dnnl_memory(sc_B.data(), sc_B_mem);
+
+    // output - no initialization required
+    memory C_f32_mem({{B, M, N}, memory::data_type::f32, memory::format_tag::abc}, eng);
+
+    infer(matmul_p, A_f32_mem, B_s8_mem, sc_B_mem, zp_B_mem, C_f32_mem, eng);
+
+    // reference
+    /*
+    memory C_f32_mem_ref({{B, M, N}, memory::data_type::f32, memory::format_tag::abc}, eng);
+
+    memory::desc a_md({B, M, K}, memory::data_type::f32, memory::format_tag::abc); // M x K layout
+    memory::desc b_md({B, K, N}, memory::data_type::f32, memory::format_tag::any);
+    memory::desc c_md({B, M, N}, memory::data_type::f32, memory::format_tag::abc); // M x N layout
+    auto matmul_pd_ref = matmul::primitive_desc(eng, a_md, b_md, c_md);
+    matmul matmul_p_ref(matmul_pd_ref);
+    stream s2(eng);
+    matmul_p_ref.execute(s2, {{DNNL_ARG_SRC, A_f32_mem},
+                            {DNNL_ARG_WEIGHTS, B_f32_mem},
+                            {DNNL_ARG_DST, C_f32_mem_ref}});
+    s2.wait();
+
+    // compare
+    std::vector<float> dst_data(B*M*N);
+    std::vector<float> dst_data_ref(B*M*N);
+    read_from_dnnl_memory(dst_data.data(), C_f32_mem);
+    read_from_dnnl_memory(dst_data_ref.data(), C_f32_mem_ref);
+    for (size_t i = 0; i < dst_data.size(); ++i) {
+        if (std::abs(dst_data[i] - dst_data_ref[i]) > 1e-4) {
+            std::cerr << "[index] - " << i << " : actual=" << dst_data[i] << " reference=" << dst_data_ref[i] << "\n";
+        }
+    }
+    */
 }
 
 int main(int argc, char **argv) {
