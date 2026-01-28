@@ -71,12 +71,12 @@ void init_vector(std::vector<float> &v) {
         e = u(gen);
 }
 
-void init_vector(std::vector<int8_t> &v) {
-    std::mt19937 gen;
-    std::uniform_int_distribution<int8_t> u(0, 10);
-    for (auto &e : v)
-        e = u(gen);
-}
+// void init_vector(std::vector<int8_t> &v) {
+//     std::mt19937 gen;
+//     std::uniform_int_distribution<int8_t> u(0, 10);
+//     for (auto &e : v)
+//         e = u(gen);
+// }
 
 } // namespace
 
@@ -101,21 +101,21 @@ matmul::primitive_desc matmul_pd_create(int64_t M, int64_t N, int64_t K, int64_t
     // runtime parameters
     primitive_attr attr;
     // Set scales with multiple scales along K and N dimensions and with groups along K.
-    int mask_sc = 0b10;
-    memory::dims group_sc = {G, 1};
+    int mask_sc = 0b110;
+    memory::dims group_sc = {G, 1, 1};
     attr.set_scales(DNNL_ARG_WEIGHTS, /* mask */ mask_sc, group_sc, memory::data_type::f32);
+
     // Set a single zero point with s8 data type.
-    int mask_zp = 0b10;
-    memory::dims group_zp = {G, 1};
 #ifdef SYM
     attr.set_zero_points(DNNL_ARG_WEIGHTS, 0,  {}, memory::data_type::u8);
 #else
+    memory::dims group_zp = {G, 1, 1};
+    int mask_zp = 0b110;
     attr.set_zero_points(DNNL_ARG_WEIGHTS, mask_zp,  group_zp, memory::data_type::u8);
 #endif
     // Set fpmath mode with `apply_to_int=true` to apply fpmath mode behavior to
     // integral primitives (in this example, matmul).
-    */
-    attr.set_fpmath_mode(fpmath_mode::any, true);
+    attr.set_fpmath_mode(fpmath_mode::strict, true);
 
     // Create a MatMul primitive descriptor
     return matmul::primitive_desc(eng, a_md, b_md, c_md, attr);
