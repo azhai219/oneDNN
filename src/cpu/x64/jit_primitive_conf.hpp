@@ -192,6 +192,7 @@ struct jit_conv_conf_t {
     bool req_zero_point_buffer; // used for calculating padding compensation
     bool zp_pbuff_outer_compute; // indicates if zp_bbuff is computed in
 
+    bool dst_scale = false;
     bool with_src_scales = false;
     bool with_wei_scales = false;
     bool with_dst_scales = false;
@@ -336,6 +337,8 @@ struct jit_conv_args_t {
     const void *tile_cfg = nullptr;
     const void *tile_cfg_tail = nullptr;
 
+    const void *scales = nullptr;
+    const void *dst_scale = nullptr;
     const void *src_scales = nullptr;
     const void *wei_scales = nullptr;
     const void *dst_scales = nullptr;
@@ -515,6 +518,7 @@ struct jit_1x1_conv_conf_t {
     bool dst_zero_point;
     bool zp_src_is_common; // common, otherwise (TODO) per-channel
 
+    bool dst_scale = false;
     bool with_src_scales = false;
     bool with_wei_scales = false;
     bool with_dst_scales = false;
@@ -542,6 +546,8 @@ struct jit_1x1_conv_args_t {
     const int32_t *src_zero_point = nullptr;
     const int32_t *dst_zero_point = nullptr;
 
+    const void *scales = nullptr;
+    const void *dst_scale = nullptr;
     const void *src_scales = nullptr;
     const void *wei_scales = nullptr;
     const void *dst_scales = nullptr;
