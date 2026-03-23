@@ -412,7 +412,7 @@ void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::reduce_loop(
             // temporary vector register for scales. Load bias data into it
             // after scales are processed.
             if (jcp.with_bias) {
-                if (jcp.signed_input || jcp.with_dst_scales)
+                if (jcp.signed_input || jcp.with_dst_scales || jcp.with_input_zp)
                     mov(reg_bias_data, ptr[rsp + reg_bias_data_off]);
                 cvt2ps(jcp.bia_dt, vmm_bias, reg_bias_data,
                         jcp.typesize_bia * jcp.oc_block * i_load, load_size);
