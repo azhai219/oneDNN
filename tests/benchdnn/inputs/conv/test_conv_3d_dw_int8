@@ -1,0 +1,6 @@
+# Test 3D depthwise INT8 convolutions (jit_avx512_core_x8s8s32x and jit_uni_x8s8s32x)
+--reset
+--dir=FWD_I
+--skip-impl=brdgmm
+--dt=u8:s8:u8,s8:s8:s8,u8:s8:f32
+--batch=shapes_dw_3d_int8
