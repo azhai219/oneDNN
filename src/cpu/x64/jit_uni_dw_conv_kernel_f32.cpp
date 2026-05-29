@@ -71,7 +71,8 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::load_src(
 
     const auto dst_layout_nxc = is_dst_layout_nxc();
     const auto ch_blk = jcp.ch_block;
-    const auto ocb_stride = dst_layout_nxc ? ch_blk : jcp.oh * jcp.ow * ch_blk;
+    const auto ocb_stride
+            = dst_layout_nxc ? ch_blk : jcp.od * jcp.oh * jcp.ow * ch_blk;
     const auto ow_stride = dst_layout_nxc ? jcp.ngroups : ch_blk;
     const int vlen = cpu_isa_traits_t<isa>::vlen / sizeof(float);
     const int c_tail = jcp.oc % jcp.ch_block;
@@ -139,7 +140,7 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::apply_filter_unrolled(
     const auto ih_stride = jcp.iw * iw_stride;
     const auto icb_stride = src_layout_nxc
             ? ch_blk
-            : (jcp.is_fused_conv ? 1 : jcp.ih) * jcp.iw * ch_blk;
+            : (jcp.is_fused_conv ? 1 : jcp.id * jcp.ih) * jcp.iw * ch_blk;
     const int vlen = cpu_isa_traits_t<isa>::vlen / sizeof(float);
 
     auto get_input_spatial_index = [=](int oi, int ki) {
@@ -170,8 +171,27 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::apply_filter_unrolled(
 
     Label iter_exit_label;
 
+    const int id_stride = jcp.ih * jcp.iw * iw_stride;
+    const int dilate_d = jcp.dilate_d + 1;
+    const int kh_kw_ch_blk = jcp.kh * jcp.kw * ch_blk;
+
+    if (jcp.ndims == 5) {
+        cmp(reg_kd, 0);
+        je(iter_exit_label, T_NEAR);
+        mov(iter_kd, reg_kd);
+    }
+
+    Label kd_label;
+    if (jcp.ndims == 5) L(kd_label);
+
     cmp(reg_kh, 0);
-    je(iter_exit_label, T_NEAR);
+    Label kh_exit_label;
+    je(kh_exit_label, T_NEAR);
+
+    if (jcp.ndims == 5) {
+        push(aux_reg_input);
+        push(aux_reg_kernel);
+    }
 
     mov(iter_kh, reg_kh);
     Label kh_label;
@@ -204,7 +224,8 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::apply_filter_unrolled(
                     }
                 }
                 for (int kw = 0; kw < jcp.kw; kw++) {
-                    const int ker_off = ch * jcp.kh * jcp.kw * ch_blk
+                    const int ker_off
+                            = ch * jcp.kd * jcp.kh * jcp.kw * ch_blk
                             + kw * ch_blk + i * vlen;
 
                     Vmm vmm_ker = get_ker_reg(0);
@@ -247,6 +268,21 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::apply_filter_unrolled(
         dec(iter_kh);
         cmp(iter_kh, 0);
         jg(kh_label, T_NEAR);
+    }
+
+    if (jcp.ndims == 5) {
+        pop(aux_reg_kernel);
+        pop(aux_reg_input);
+    }
+
+    L(kh_exit_label);
+
+    if (jcp.ndims == 5) {
+        add(aux_reg_kernel, kh_kw_ch_blk * sizeof(float));
+        add(aux_reg_input, id_stride * dilate_d * jcp.typesize_in);
+        dec(iter_kd);
+        cmp(iter_kd, 0);
+        jg(kd_label, T_NEAR);
     }
 
     L(iter_exit_label);
@@ -405,7 +441,8 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::store_dst(
 
     const auto dst_layout_nxc = is_dst_layout_nxc();
     const auto ch_blk = jcp.ch_block;
-    const auto ocb_stride = dst_layout_nxc ? ch_blk : jcp.oh * jcp.ow * ch_blk;
+    const auto ocb_stride
+            = dst_layout_nxc ? ch_blk : jcp.od * jcp.oh * jcp.ow * ch_blk;
     const auto ow_stride = dst_layout_nxc ? jcp.ngroups : ch_blk;
     const int vlen = cpu_isa_traits_t<isa>::vlen / sizeof(float);
     const int c_tail = jcp.oc_without_padding % jcp.ch_block;
@@ -610,6 +647,8 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::generate() {
     mov(reg_kernel, ptr[this->param1 + GET_OFF(filt)]);
     if (jcp.with_bias) mov(reg_bias, ptr[this->param1 + GET_OFF(bias)]);
     mov(reg_kh, ptr[this->param1 + GET_OFF(kh_padding)]);
+    if (jcp.ndims == 5)
+        mov(reg_kd, ptr[this->param1 + GET_OFF(kd_padding)]);
     mov(reg_ch_blocks, ptr[this->param1 + GET_OFF(load_work)]);
 
     Label ch_blocks_tail_label;

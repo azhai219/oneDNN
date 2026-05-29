@@ -62,6 +62,9 @@ private:
 
     reg64_t reg_tmp = reg_ch_blocks;
 
+    // 3D (depth) convolution - reuses fused conv registers
+    reg64_t reg_kd = rdx;
+    reg64_t iter_kd = rbp;
     // fused convolution
     reg64_t reg_input_buffer_ptr = rdx;
     reg64_t aux_reg_input_buffer_ptr = rsi;

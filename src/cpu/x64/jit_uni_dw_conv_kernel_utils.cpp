@@ -45,16 +45,21 @@ status_t jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_conf(
             VERBOSE_BAD_PARAM, "large size is not supported");
 
     const int ndims = src_d.ndims();
-    // Currently this kernel only supports 2D convolutions.
-    VDISPATCH_CONV_IC(ndims == 4, "kernel supports only 2D convolutions");
+    VDISPATCH_CONV_IC(
+            utils::one_of(ndims, 4, 5), "kernel supports only 2D/3D convolutions");
 
     jcp.prop_kind = cd.prop_kind;
+    jcp.ndims = ndims;
 
-    const auto blocked_tag = is_superset(isa, avx512_core) ? nChw16c : nChw8c;
-    const auto wei_tag = is_superset(isa, avx512_core) ? Goihw16g : Goihw8g;
-    const auto nxc_tag = nhwc;
+    const auto blocked_tag = ndims == 5
+            ? (is_superset(isa, avx512_core) ? nCdhw16c : nCdhw8c)
+            : (is_superset(isa, avx512_core) ? nChw16c : nChw8c);
+    const auto wei_tag = ndims == 5
+            ? (is_superset(isa, avx512_core) ? Goidhw16g : Goidhw8g)
+            : (is_superset(isa, avx512_core) ? Goihw16g : Goihw8g);
+    const auto nxc_tag = ndims == 5 ? ndhwc : nhwc;
     const auto def_tag
-            = (mayiuse(avx512_core)
+            = (ndims == 4 && mayiuse(avx512_core)
                       && jcp.prop_kind == prop_kind::forward_inference)
             ? nxc_tag
             : blocked_tag;
@@ -117,32 +122,43 @@ status_t jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_conf(
     jcp.oc_without_padding = jcp.oc;
     jcp.ic = src_d.dims()[1];
 
-    jcp.ih = src_d.dims()[2];
-    jcp.iw = src_d.dims()[3];
-    jcp.oh = dst_d.dims()[2];
-    jcp.ow = dst_d.dims()[3];
+    jcp.id = (ndims == 5) ? src_d.dims()[2] : 1;
+    jcp.ih = src_d.dims()[ndims - 2];
+    jcp.iw = src_d.dims()[ndims - 1];
+    jcp.od = (ndims == 5) ? dst_d.dims()[2] : 1;
+    jcp.oh = dst_d.dims()[ndims - 2];
+    jcp.ow = dst_d.dims()[ndims - 1];
 
-    jcp.kh = weights_d.dims()[3];
-    jcp.kw = weights_d.dims()[4];
+    jcp.kd = (ndims == 5) ? weights_d.dims()[3] : 1;
+    jcp.kh = weights_d.dims()[ndims - 1];
+    jcp.kw = weights_d.dims()[ndims];
 
-    jcp.t_pad = cd.padding[0][0];
-    jcp.l_pad = cd.padding[0][1];
+    jcp.f_pad = (ndims == 5) ? cd.padding[0][0] : 0;
+    jcp.t_pad = cd.padding[0][ndims - 4];
+    jcp.l_pad = cd.padding[0][ndims - 3];
 
-    jcp.stride_h = cd.strides[0];
-    jcp.stride_w = cd.strides[1];
+    jcp.stride_d = (ndims == 5) ? cd.strides[0] : 1;
+    jcp.stride_h = cd.strides[ndims - 4];
+    jcp.stride_w = cd.strides[ndims - 3];
 
-    jcp.dilate_h = cd.dilates[0];
-    jcp.dilate_w = cd.dilates[1];
+    jcp.dilate_d = (ndims == 5) ? cd.dilates[0] : 0;
+    jcp.dilate_h = cd.dilates[ndims - 4];
+    jcp.dilate_w = cd.dilates[ndims - 3];
 
     int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
     int ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
+    int ext_kd = calculate_extended_filter_size(jcp.kd, jcp.dilate_d);
     jcp.r_pad = calculate_end_padding(
             jcp.l_pad, jcp.ow, jcp.iw, jcp.stride_w, ext_kw);
     jcp.b_pad = calculate_end_padding(
             jcp.t_pad, jcp.oh, jcp.ih, jcp.stride_h, ext_kh);
+    jcp.back_pad = (ndims == 5) ? calculate_end_padding(
+                           jcp.f_pad, jcp.od, jcp.id, jcp.stride_d, ext_kd)
+                                : 0;
     bool kernel_outside_src = false || ext_kw <= jcp.l_pad
             || ext_kw <= jcp.r_pad || ext_kh <= jcp.t_pad
-            || ext_kh <= jcp.b_pad;
+            || ext_kh <= jcp.b_pad
+            || (ndims == 5 && (ext_kd <= jcp.f_pad || ext_kd <= jcp.back_pad));
     VDISPATCH_CONV_IC(!kernel_outside_src, VERBOSE_UNSUPPORTED_PAD_FEATURE,
             "weights and src size mismatch");
 
@@ -168,7 +184,7 @@ status_t jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_conf(
         jcp.loop_order = loop_nhwcg;
         const int resrc_depthwise_ur_w = (31 - jcp.kw + jcp.stride_w)
                 / (jcp.nb_ch_blocking + jcp.stride_w);
-        jcp.is_resrc_depthwise = (!is_bf16 && !is_f16)
+        jcp.is_resrc_depthwise = (!is_bf16 && !is_f16) && ndims == 4
                 && is_superset(isa, avx512_core) && jcp.stride_w < jcp.kw
                 && jcp.kw <= 5 && jcp.dilate_w == 0
                 && resrc_depthwise_ur_w >= 2;
@@ -189,7 +205,8 @@ status_t jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_conf(
                 = isa == sse41 ? 4 : 0; // extra offset from repeats
 
         // check that input offsets fit into s32
-        const size_t max_ic_off = max_ch_off * jcp.ih * jcp.iw;
+        const size_t max_ic_off
+                = max_ch_off * jcp.id * jcp.ih * jcp.iw;
         const size_t max_iw_idx
                 = static_cast<size_t>(jcp.ur_w - 1) * jcp.stride_w
                 + (ext_kw - 1);
@@ -200,7 +217,8 @@ status_t jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_conf(
                 VERBOSE_OFFSET_DT_MISMATCH, "input", "s32");
 
         // check that output offsets fit into s32
-        const size_t max_oc_off = max_ch_off * jcp.oh * jcp.ow;
+        const size_t max_oc_off
+                = max_ch_off * jcp.od * jcp.oh * jcp.ow;
         const size_t max_ow_off
                 = static_cast<size_t>(jcp.ur_w - 1) * jcp.ch_block;
         const size_t max_output_offset

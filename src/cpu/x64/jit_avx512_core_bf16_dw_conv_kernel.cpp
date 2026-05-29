@@ -126,12 +126,31 @@ void jit_avx512_dw_conv_fwd_kernel_bf16_t::apply_filter_unrolled(
     const auto ih_stride = jcp.iw * iw_stride;
     const auto icb_stride = src_layout_nxc
             ? ch_blk
-            : (jcp.is_fused_conv ? 1 : jcp.ih) * jcp.iw * ch_blk;
+            : (jcp.is_fused_conv ? 1 : jcp.id * jcp.ih) * jcp.iw * ch_blk;
+
+    const int id_stride = jcp.ih * jcp.iw * iw_stride;
+    const int dilate_d = jcp.dilate_d + 1;
+    const int kh_kw_ch_blk = jcp.kh * jcp.kw * ch_blk;
 
     Label iter_exit_label;
 
+    if (jcp.ndims == 5) {
+        cmp(reg_kd, 0);
+        je(iter_exit_label, T_NEAR);
+        mov(iter_kd, reg_kd);
+    }
+
+    Label kd_label;
+    if (jcp.ndims == 5) L(kd_label);
+
     cmp(reg_kh, 0);
-    je(iter_exit_label, T_NEAR);
+    Label kh_exit_label;
+    je(kh_exit_label, T_NEAR);
+
+    if (jcp.ndims == 5) {
+        push(aux_reg_input);
+        push(aux_reg_kernel);
+    }
 
     mov(iter_kh, reg_kh);
     Label kh_label;
@@ -144,7 +163,8 @@ void jit_avx512_dw_conv_fwd_kernel_bf16_t::apply_filter_unrolled(
         for (int ch = 0; ch < ur_ch_blocks; ch++) {
             const bool mask_flag = last_ch_block_flag && ch == ur_ch_blocks - 1;
             for (int kw = 0; kw < jcp.kw; kw++) {
-                int ker_off = ch * jcp.kh * jcp.kw * ch_blk + kw * ch_blk;
+                int ker_off = ch * jcp.kd * jcp.kh * jcp.kw * ch_blk
+                        + kw * ch_blk;
                 const Zmm zmm_ker_reg_msk = mask_flag
                         ? zmm_ker_reg | ktail_mask | T_z
                         : zmm_ker_reg;
@@ -182,6 +202,21 @@ void jit_avx512_dw_conv_fwd_kernel_bf16_t::apply_filter_unrolled(
         dec(iter_kh);
         cmp(iter_kh, 0);
         jg(kh_label, T_NEAR);
+    }
+
+    if (jcp.ndims == 5) {
+        pop(aux_reg_kernel);
+        pop(aux_reg_input);
+    }
+
+    L(kh_exit_label);
+
+    if (jcp.ndims == 5) {
+        add(aux_reg_kernel, kh_kw_ch_blk * jcp.typesize_in);
+        add(aux_reg_input, id_stride * dilate_d * jcp.typesize_in);
+        dec(iter_kd);
+        cmp(iter_kd, 0);
+        jg(kd_label, T_NEAR);
     }
 
     L(iter_exit_label);
@@ -553,6 +588,8 @@ void jit_avx512_dw_conv_fwd_kernel_bf16_t::generate() {
     mov(reg_kernel, ptr[this->param1 + GET_OFF(filt)]);
     if (jcp.with_bias) mov(reg_bias, ptr[this->param1 + GET_OFF(bias)]);
     mov(reg_kh, ptr[this->param1 + GET_OFF(kh_padding)]);
+    if (jcp.ndims == 5)
+        mov(reg_kd, ptr[this->param1 + GET_OFF(kd_padding)]);
     mov(reg_ch_blocks, ptr[this->param1 + GET_OFF(load_work)]);
 
     Label ch_blocks_tail_label;
