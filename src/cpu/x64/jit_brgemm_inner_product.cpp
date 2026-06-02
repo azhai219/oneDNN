@@ -135,6 +135,62 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
     const size_t acc_dt_size = types::data_type_size(jbgp.acc_dt);
     const size_t dst_dt_size = types::data_type_size(jbgp.dst_dt);
 
+    int8_t* qsrc = nullptr;
+    float* src_dscales = nullptr;
+    int32_t* src_grouped_sum = nullptr;
+    if (jbgp.with_src_dynamic_quant) {
+        qsrc = scratchpad.template get<int8_t>(key_src_quantized);
+        src_dscales = scratchpad.template get<float>(key_src_dequantized_scales);
+        src_grouped_sum = scratchpad.template get<int32_t>(key_src_grouped_sum);
+
+        int ic_groups = div_up(jbgp.ic, jbgp.src_quant_group_size);
+        int ic_sum_groups = div_up(jbgp.ic, jbgp.src_sum_group_size);
+        auto src_ptr = reinterpret_cast<const float*>(src);
+        auto qsrc_ptr = qsrc;
+        auto src_dscales_ptr = src_dscales;
+        auto src_grouped_sum_ptr = src_grouped_sum;
+        int vec_loop_end = rnd_dn(jbgp.ic, jbgp.src_quant_group_size);
+
+        parallel_nd(jbgp.mb, [&](int mb) {
+            src_quantization_runtime_params_t rt_params = {};
+            rt_params.src_ptr = src_ptr + mb * jbgp.ic;
+            rt_params.qsrc_ptr = qsrc_ptr + mb * jbgp.ic;
+            rt_params.src_scales_ptr = src_dscales_ptr + mb * ic_groups;
+            rt_params.src_grouped_sum_ptr = src_grouped_sum_ptr + mb * ic_sum_groups;
+            rt_params.ic_size = vec_loop_end;
+            (*brg_src_quant_kernel_)(&rt_params);
+
+            if (vec_loop_end != jbgp.ic) {
+                float amax = 0;
+                for (int ic = vec_loop_end; ic < jbgp.ic; ic++) {
+                    amax = std::max(amax, std::abs(src_ptr[mb * jbgp.ic + ic]));
+                }
+
+                const float dscale = amax / 127;
+                const float qscale  = (dscale != 0) ? (1.0f / dscale) : 0;
+
+                src_dscales_ptr[mb * ic_groups + ic_groups - 1] = dscale;
+                for (int ic = vec_loop_end; ic < jbgp.ic; ic++) {
+                    qsrc_ptr[mb * jbgp.ic + ic] = std::round(src_ptr[mb * jbgp.ic + ic] * qscale);
+                }
+            }
+
+            if (jbgp.wei_decomp_zero_points_dt) {
+                for (int icb = vec_loop_end / jbgp.src_quant_group_size; icb < ic_sum_groups; icb++) {
+                    int ic_begin = icb * jbgp.src_sum_group_size;
+                    int ic_end = nstl::min(static_cast<int>((icb + 1) * jbgp.src_sum_group_size), jbgp.ic);
+                    int sum = 0;
+                    for (int ic = ic_begin; ic < ic_end; ic++) {
+                        sum += qsrc_ptr[mb * jbgp.ic + ic];
+                    }
+                    src_grouped_sum_ptr[mb * ic_sum_groups + icb] = sum;
+                }
+            }
+        });
+
+        src = reinterpret_cast<const char *>(qsrc);
+    }
+
     auto addr_batch_global = scratchpad.template get<brgemm_batch_element_t>(
             key_brgemm_primitive_batch);
     auto a_buffer_global = (jbgp.use_buffer_a)
@@ -382,9 +438,13 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
 
             int wei_scales_offset = 0;
             int wei_zero_points_offset = 0;
+            int src_scales_offset = 0;
+            int src_grouped_sum_offset = 0;
             if (jbgp.weights_decompression) {
                 wei_scales_offset = wei_scales_oc_stride * oc * wei_scales_dt_size;
                 wei_zero_points_offset = wei_zero_points_oc_stride * oc * wei_zero_points_dt_size;
+                src_scales_offset = n * div_up(jbgp.ic, jbgp.src_quant_group_size);
+                src_grouped_sum_offset = n * div_up(jbgp.ic, jbgp.src_sum_group_size);
             }
 
             auto ptr_D = dst + dst_off;
@@ -411,10 +471,12 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
 
                 brgemm_kernel_execute_postops(brg_kernel, gemm_batch,
                         addr_batch, (void *)ptr_C, (void *)ptr_D, post_ops_data,
-                        scratch, nullptr, wei_scales + wei_scales_offset, wei_zero_points + wei_zero_points_offset, nullptr, ic);
+                        scratch, nullptr, wei_scales + wei_scales_offset, wei_zero_points + wei_zero_points_offset,
+                        src_dscales + src_scales_offset, src_grouped_sum + src_grouped_sum_offset, ic);
             } else {
                 brgemm_kernel_execute(brg_kernel, gemm_batch, addr_batch,
-                        (void *)ptr_C, is_amx ? (void *)wsp_tile : nullptr, nullptr, wei_scales + wei_scales_offset, wei_zero_points + wei_zero_points_offset, nullptr, ic);
+                        (void *)ptr_C, is_amx ? (void *)wsp_tile : nullptr, nullptr, wei_scales + wei_scales_offset, wei_zero_points + wei_zero_points_offset,
+                        src_dscales + src_scales_offset, src_grouped_sum + src_grouped_sum_offset, ic);
             }
         }
 
@@ -489,9 +551,13 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
 
             int wei_scales_offset = 0;
             int wei_zero_points_offset = 0;
+            int src_scales_offset = 0;
+            int src_grouped_sum_offset = 0;
             if (jbgp.weights_decompression) {
                 wei_scales_offset = wei_scales_oc_stride * oc * wei_scales_dt_size;
                 wei_zero_points_offset = wei_zero_points_oc_stride * oc * wei_zero_points_dt_size;
+                src_scales_offset = n * div_up(jbgp.ic, jbgp.src_quant_group_size);
+                src_grouped_sum_offset = n * div_up(jbgp.ic, jbgp.src_sum_group_size);
             }
 
             auto brg_kernel_ic_tail = brg_kernels_[brg_ker_ic_tail_idx].get();
@@ -517,10 +583,12 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
                         dst_scales_ptr};
 
                 brgemm_kernel_execute_postops(brg_kernel_ic_tail, 1, addr_batch,
-                        (void *)ptr_C, (void *)ptr_D, post_ops_data, scratch, nullptr, wei_scales + wei_scales_offset, wei_zero_points + wei_zero_points_offset, nullptr, ic);
+                        (void *)ptr_C, (void *)ptr_D, post_ops_data, scratch, nullptr, wei_scales + wei_scales_offset, wei_zero_points + wei_zero_points_offset,
+                        src_dscales + src_scales_offset, src_grouped_sum + src_grouped_sum_offset, ic);
             } else {
                 brgemm_kernel_execute(brg_kernel_ic_tail, 1, addr_batch,
-                        (void *)ptr_C, is_amx ? (void *)wsp_tile : nullptr, nullptr, wei_scales + wei_scales_offset, wei_zero_points + wei_zero_points_offset, nullptr, ic);
+                        (void *)ptr_C, is_amx ? (void *)wsp_tile : nullptr, nullptr, wei_scales + wei_scales_offset, wei_zero_points + wei_zero_points_offset,
+                        src_dscales + src_scales_offset, src_grouped_sum + src_grouped_sum_offset, ic);
             }
         }
     };
