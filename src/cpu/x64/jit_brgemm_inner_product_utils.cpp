@@ -256,7 +256,7 @@ jit_brgemm_ip_conf_t::get_desired_weights_tag() const {
                             pick(n_sp_dims, OI4i8o4i, OwI4i8o4i, OhwI4i8o4i,
                                     OdhwI4i8o4i)}};
         }
-    } else if (jbgp.weights_decompression && one_of(jbgp.orig_wei_dt, s4, u4)) {
+    } else if (jbgp.weights_decompression && one_of(jbgp.orig_wei_dt, nf4, s4, u4)) {
         {
             if (is_superset(jbgp.isa, avx512_core)) {
                 return {{64,
@@ -1396,7 +1396,7 @@ status_t jit_brgemm_ip_conf_t::init_conf_base(cpu_isa_t isa,
     jbgp.dst_dt = dst_d.data_type();
     jbgp.wei_dt = weights_d.data_type();
 
-    jbgp.weights_decompression = (one_of(jbgp.src_dt, f32, bf16) && one_of(jbgp.wei_dt, u8, s8, s4, u4)) ||
+    jbgp.weights_decompression = (one_of(jbgp.src_dt, f32, bf16) && one_of(jbgp.wei_dt, u8, s8, nf4, s4, u4)) ||
                                  (one_of(jbgp.src_dt, f32) && one_of(jbgp.wei_dt, f16, bf16));
     jbgp.wei_decomp_algo = weights_decomp_kind_t::immediate;
     jbgp.orig_wei_dt = jbgp.wei_dt;
