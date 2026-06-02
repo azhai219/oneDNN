@@ -106,6 +106,12 @@ private:
         return Vmm(n_vregs - idx - 1);
     }
 
+    Vmm vmm_lookup() { return vmm_tmp(0); }
+    Vmm vmm_lookup_low() { return vmm_tmp(0); }
+    Vmm vmm_lookup_high() { return vmm_tmp(1); }
+    Vmm vmm_mask8() { return vmm_tmp(2); }
+    Vmm vmm_mask7() { return vmm_tmp(3); }
+
     Xbyak::Reg64 reg_weights = r8;
     Xbyak::Reg64 reg_decomp_buffer = r9;
     Xbyak::Reg64 reg_scales = r10;

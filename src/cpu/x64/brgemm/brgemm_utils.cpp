@@ -56,10 +56,10 @@ status_t init_kernel_datatype(
 
     brg->is_int8 = utils::one_of(dt_a, data_type::u8, data_type::s8)
             && utils::one_of(dt_b, data_type::u8, data_type::s8, data_type::u4);
-    brg->is_bf16 = (dt_a == data_type::bf16) && utils::one_of(dt_b, data_type::bf16, data_type::u8, data_type::s8, data_type::s4, data_type::u4);
+    brg->is_bf16 = (dt_a == data_type::bf16) && utils::one_of(dt_b, data_type::bf16, data_type::u8, data_type::s8, data_type::nf4, data_type::s4, data_type::u4);
     brg->is_f32 = (dt_a == data_type::f32)
             && utils::one_of(
-                    dt_b, data_type::f32, data_type::f16, data_type::bf16, data_type::u8, data_type::s8, data_type::s4, data_type::u4);
+                    dt_b, data_type::f32, data_type::f16, data_type::bf16, data_type::u8, data_type::s8, data_type::nf4, data_type::s4, data_type::u4);
     brg->is_f16 = (dt_a == data_type::f16)
             && utils::one_of(dt_b, data_type::f32, data_type::f16);
     brg->is_fp8 = one_of(dt_a, data_type::f8_e5m2, data_type::f8_e4m3)
@@ -271,6 +271,8 @@ int calculate_max_bcast_block(brgemm_desc_t *brg, const int adj_ld_block2) {
     auto microkernel_max_reg_count
             = max_isa_regs - microkernel_regs - load_regs - max_bcst_regs;
 
+    if (one_of(brg->dt_b, data_type::nf4) && brg->isa_impl == avx2) microkernel_max_reg_count -= 5;
+    if (one_of(brg->dt_b, data_type::nf4) && brg->isa_impl != avx2) microkernel_max_reg_count -= 1;
     if (brg->with_wei_decomp_zero_points && brg->wei_decomp_zero_points_stride == 0) microkernel_max_reg_count -= 1;
 
     microkernel_max_reg_count /= adj_ld_block2;
@@ -857,7 +859,7 @@ status_t brgemm_blocking(brgemm_desc_t *brg) {
             = (brg->is_f16 && one_of(brg->isa_impl, avx2_vnni_2, avx512_core_fp16))
             || (brg->is_bf16 && brg->isa_impl == avx2_vnni_2)
             || (one_of(brg->dt_a, data_type::f32, data_type::bf16) &&
-                one_of(brg->dt_b, data_type::u8, data_type::s8, data_type::s4, data_type::u4, data_type::f16));
+                one_of(brg->dt_b, data_type::u8, data_type::s8, data_type::nf4, data_type::s4, data_type::u4, data_type::f16));
     brg->rd_step = has_no_vnni_compute_instruction ? 1 : data_type_vnni_granularity(brg->dt_b);
 
     set_isa_impl(brg);

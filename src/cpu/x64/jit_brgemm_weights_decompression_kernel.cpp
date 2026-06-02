@@ -106,6 +106,28 @@ void jit_brgemm_weights_decompression_kernel_t<isa>::load_weights(Vmm vmm_load, 
             uni_vcvtdq2ps(vmm_load, vmm_load);
             break;
         }
+        case data_type::nf4: {
+            uni_vpmovzxbd(vmm_load, addr);
+            if (ic % 2 == 0) {
+                uni_vpsrld(vmm_load, vmm_load, 4);
+            } else {
+                uni_vpslld(vmm_load, vmm_load, 28);
+                uni_vpsrld(vmm_load, vmm_load, 28);
+            }
+
+            if (isa == avx2) {
+                auto res = vmm_weights(1);
+                auto mask = vmm_weights(2);
+                vpcmpgtd(mask, vmm_load, vmm_mask7());
+                vpermd(res, vmm_load, vmm_lookup_low());
+                vpsubd(vmm_load, vmm_load, vmm_mask8());
+                vpermd(vmm_load, vmm_load, vmm_lookup_high());
+                vblendvps(vmm_load, res, vmm_load, mask);
+            } else {
+                vpermd(vmm_load, vmm_load, vmm_lookup());
+            }
+            break;
+        }
         case data_type::f16: {
             vcvtph2ps(vmm_load, addr);
             break;
@@ -150,6 +172,47 @@ void jit_brgemm_weights_decompression_kernel_t<isa>::generate() {
     }
     mov(reg_ic_size, ptr[param1 + GET_OFF(ic_size)]);
 
+    if (jcp_.weights_dt == data_type::nf4) {
+        static const float lookup[16] = {
+            -1.0,
+            -0.6961928009986877,
+            -0.5250730514526367,
+            -0.39491748809814453,
+            -0.28444138169288635,
+            -0.18477343022823334,
+            -0.09105003625154495,
+            0.0,
+            0.07958029955625534,
+            0.16093020141124725,
+            0.24611230194568634,
+            0.33791524171829224,
+            0.44070982933044434,
+            0.5626170039176941,
+            0.7229568362236023,
+            1.0
+        };
+
+        static const int32_t mask8[16] = {
+            8, 8, 8, 8, 8, 8, 8, 8
+        };
+        static const int32_t mask7[16] = {
+            7, 7, 7, 7, 7, 7, 7, 7
+        };
+
+        if (isa == avx2) {
+            mov(reg_tmp, (size_t)lookup);
+            uni_vmovups(vmm_lookup_low(), ptr[reg_tmp]);
+            uni_vmovups(vmm_lookup_high(), ptr[reg_tmp + 8 * sizeof(float)]);
+            mov(reg_tmp, (size_t)mask8);
+            uni_vmovups(vmm_mask8(), ptr[reg_tmp]);
+            mov(reg_tmp, (size_t)mask7);
+            uni_vmovups(vmm_mask7(), ptr[reg_tmp]);
+        } else {
+            mov(reg_tmp, (size_t)lookup);
+            uni_vmovups(vmm_lookup(), ptr[reg_tmp]);
+        }
+    }
+
     if (jcp_.with_scales)
         init_decomp_params(std::bind(&jit_brgemm_weights_decompression_kernel_t::vmm_scales, this, _1), reg_scales, jcp_.broadcast_scales, data_type::f32);
 
@@ -162,7 +225,7 @@ void jit_brgemm_weights_decompression_kernel_t<isa>::generate() {
     Xbyak::Label ic_end_label;
 
     size_t weights_dt_size = types::data_type_size(jcp_.weights_dt);
-    size_t typesize_scale = one_of(jcp_.weights_dt, data_type::s4, data_type::u4) ? 2 : 1;
+    size_t typesize_scale = one_of(jcp_.weights_dt, data_type::nf4, data_type::s4, data_type::u4) ? 2 : 1;
     size_t decomp_buf_dt_size = types::data_type_size(jcp_.decomp_buffer_dt);
 
     L(ic_loop_label);

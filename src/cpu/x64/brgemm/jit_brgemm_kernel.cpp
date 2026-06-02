@@ -291,6 +291,14 @@ private:
         else if (brg.is_f16_b_non_amx_vnni())
             used_vregs = 2;
         
+        if (one_of(brg.dt_b, data_type::nf4) && brg.isa_impl == avx2) {
+            used_vregs += 5;
+        }
+
+        if (one_of(brg.dt_b, data_type::nf4) && brg.isa_impl != avx2) {
+            used_vregs += 1;
+        }
+
         if (brg.with_wei_decomp_zero_points && brg.wei_decomp_zero_points_stride == 0) {
             used_vregs += 1;
         }
@@ -509,7 +517,7 @@ dim_t jit_brgemm_kernel_t<Wmm>::A_offset(
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::B_offset(
         dim_t ld, dim_t rd, bool is_amx) const noexcept {
-    int typesize_scale = one_of(brg.dt_b, data_type::s4, data_type::u4) ? 2 : 1;
+    int typesize_scale = one_of(brg.dt_b, data_type::nf4, data_type::s4, data_type::u4) ? 2 : 1;
     if (is_amx) {
         return brg.typesize_B * (brg.rd_step * ld * brg.ld_block) / typesize_scale;
     } else {
@@ -542,14 +550,14 @@ dim_t jit_brgemm_kernel_t<Wmm>::rdb_A_offset() const noexcept {
 
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::rdb_B_offset() const noexcept {
-    int typesize_scale = one_of(brg.dt_b, data_type::s4, data_type::u4) ? 2 : 1;
+    int typesize_scale = one_of(brg.dt_b, data_type::nf4, data_type::s4, data_type::u4) ? 2 : 1;
     return brg.typesize_B * brg.rd_block * brg.LDB / typesize_scale;
 }
 
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::ldb_B_offset(
         dim_t ld_block2, bool is_tail) const noexcept {
-    int typesize_scale = one_of(brg.dt_b, data_type::s4, data_type::u4) ? 2 : 1;
+    int typesize_scale = one_of(brg.dt_b, data_type::nf4, data_type::s4, data_type::u4) ? 2 : 1;
     return (is_tail) ? brg.typesize_B * brg.ldb_tail * brg.ld_step / typesize_scale
                      : brg.typesize_B * ld_block2 * brg.ld_block * brg.ld_step / typesize_scale;
 }
@@ -2683,6 +2691,58 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                 reg_ldb_loop.save();
 
                 auto vmm_zero_points = Vmm(isa_num_vregs(brg.isa_impl) - 1);
+                auto vmm_mask8 = Vmm(isa_num_vregs(brg.isa_impl) - 1);
+                auto vmm_mask7 = Vmm(isa_num_vregs(brg.isa_impl) - 2);
+                auto vmm_lookup = Vmm(isa_num_vregs(brg.isa_impl) - 1);
+                auto vmm_lookup_low = Vmm(isa_num_vregs(brg.isa_impl) - 3);
+                auto vmm_lookup_high = Vmm(isa_num_vregs(brg.isa_impl) - 4);
+                if (brg.dt_b == data_type::nf4) {
+                    static const float lookup[16] = {
+                        -1.0,
+                        -0.6961928009986877,
+                        -0.5250730514526367,
+                        -0.39491748809814453,
+                        -0.28444138169288635,
+                        -0.18477343022823334,
+                        -0.09105003625154495,
+                        0.0,
+                        0.07958029955625534,
+                        0.16093020141124725,
+                        0.24611230194568634,
+                        0.33791524171829224,
+                        0.44070982933044434,
+                        0.5626170039176941,
+                        0.7229568362236023,
+                        1.0};
+
+                    static const int32_t mask8[16] = {
+                        8, 8, 8, 8, 8, 8, 8, 8,
+                        8, 8, 8, 8, 8, 8, 8, 8
+                    };
+                    static const int32_t mask7[16] = {
+                        7, 7, 7, 7, 7, 7, 7, 7,
+                        7, 7, 7, 7, 7, 7, 7, 7
+                    };
+
+                    if (brg.isa_impl == avx2) {
+                        mov(reg_ptr, (size_t)lookup);
+                        uni_vmovups(vmm_lookup_low, ptr[reg_ptr]);
+                        mov(reg_ptr, (size_t)lookup);
+                        uni_vmovups(vmm_lookup_high, ptr[reg_ptr + 8 * sizeof(float)]);
+                        mov(reg_ptr, (size_t)mask8);
+                        uni_vmovups(vmm_mask8, ptr[reg_ptr]);
+                        mov(reg_ptr, (size_t)mask7);
+                        uni_vmovups(vmm_mask7, ptr[reg_ptr]);
+                        if (brg.wei_decomp_zero_points_stride == 0)
+                            vmm_zero_points = Vmm(isa_num_vregs(brg.isa_impl) - 6);
+                        else
+                            vmm_zero_points = Vmm(isa_num_vregs(brg.isa_impl) - 5);
+                    } else {
+                        mov(reg_ptr, (size_t)lookup);
+                        uni_vmovups(vmm_lookup, ptr[reg_ptr]);
+                        vmm_zero_points = Vmm(isa_num_vregs(brg.isa_impl) - 2);
+                    }
+                }
 
                 reg_aux2_wei_dscales.restoreTo(reg_local_wei_scales);
                 reg_aux2_wei_zp.restoreTo(reg_local_wei_zp);
@@ -2721,6 +2781,26 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                                 vpsrad(vmm_load, vmm_load, 28);
                             }
                             uni_vcvtdq2ps(vmm_load, vmm_load);
+                        } else if (brg.dt_b == data_type::nf4) {
+                            uni_vpmovzxbd(vmm_load, addr);
+                            if (rd % 2 == 0) {
+                                uni_vpsrld(vmm_load, vmm_load, 4);
+                            } else {
+                                uni_vpslld(vmm_load, vmm_load, 28);
+                                uni_vpsrld(vmm_load, vmm_load, 28);
+                            }
+
+                            if (brg.isa_impl == avx2) {
+                                auto res = bcst();
+                                auto mask = Vmm(isa_num_vregs(brg.isa_impl) - 5);
+                                vpcmpgtd(mask, vmm_load, vmm_mask7);
+                                vpermd(res, vmm_load, vmm_lookup_low);
+                                vpsubd(vmm_load, vmm_load, vmm_mask8);
+                                vpermd(vmm_load, vmm_load, vmm_lookup_high);
+                                vblendvps(vmm_load, res, vmm_load, mask);
+                            } else {
+                                vpermd(vmm_load, vmm_load, vmm_lookup);
+                            }
                         } else {
                             assert(!"unsupported combination");
                         }
