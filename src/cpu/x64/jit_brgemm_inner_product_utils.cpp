@@ -256,7 +256,7 @@ jit_brgemm_ip_conf_t::get_desired_weights_tag() const {
                             pick(n_sp_dims, OI4i8o4i, OwI4i8o4i, OhwI4i8o4i,
                                     OdhwI4i8o4i)}};
         }
-    } else if (jbgp.weights_decompression && one_of(jbgp.orig_wei_dt, nf4, s4, u4)) {
+    } else if (jbgp.weights_decompression && one_of(jbgp.orig_wei_dt, nf4, s4, u4, f4_e2m1)) {
         {
             if (is_superset(jbgp.isa, avx512_core)) {
                 return {{64,
@@ -692,6 +692,9 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
             jbgp.K = jbgp.ic_block * jbgp.nb_ic_blocking;
             jbgp.gemm_batch_size = 1;
         }
+        jbgp.K = k_blk * jbgp.nb_ic_blocking;
+        jbgp.gemm_batch_size = 1;
+        jbgp.nthr_ic_b = 1;
     }
 
     const int nthrs_other = jbgp.nthr / jbgp.nthr_ic_b;
@@ -1396,18 +1399,22 @@ status_t jit_brgemm_ip_conf_t::init_conf_base(cpu_isa_t isa,
     jbgp.dst_dt = dst_d.data_type();
     jbgp.wei_dt = weights_d.data_type();
 
-    jbgp.weights_decompression = (one_of(jbgp.src_dt, f32, bf16) && one_of(jbgp.wei_dt, u8, s8, nf4, s4, u4)) ||
+    jbgp.weights_decompression = (one_of(jbgp.src_dt, f32, bf16) && one_of(jbgp.wei_dt, u8, s8, nf4, s4, u4, f4_e2m1)) ||
                                  (one_of(jbgp.src_dt, f32) && one_of(jbgp.wei_dt, f16, bf16));
     jbgp.wei_decomp_algo = weights_decomp_kind_t::immediate;
     jbgp.orig_wei_dt = jbgp.wei_dt;
     jbgp.with_grouped_weights_decompression = false;
+    jbgp.wei_decomp_scales_dt = data_type::undef;
     jbgp.wei_decomp_zero_points_dt = data_type::undef;
     if (jbgp.weights_decompression) {
         jbgp.wei_scales_ic_group_size = jbgp.ic;
         auto wei_scales = attr.scales_.get(DNNL_ARG_WEIGHTS);
         if (!wei_scales.has_default_values()) {
-            if (wei_scales.get_data_type() != f32)
+            jbgp.wei_decomp_scales_dt = wei_scales.get_data_type();
+            if (!one_of(jbgp.wei_decomp_scales_dt, f32, e8m0))
                 return status::unimplemented;
+        } else {
+            jbgp.wei_decomp_scales_dt = f32;
         }
         if (!wei_scales.has_default_values() && wei_scales.get_dims()[1] != 1) {
             jbgp.with_grouped_weights_decompression = true;
@@ -1661,7 +1668,8 @@ void jit_brgemm_ip_conf_t::init_scratchpad_base(
                 types::data_type_size(jbgp.wei_dt));
         }
         if (jbgp.wei_decomp_scales_buffer_size)
-            scratchpad.book(key_decompression_scales, jbgp.wei_decomp_scales_buffer_size, sizeof(float));
+            scratchpad.book(key_decompression_scales, jbgp.wei_decomp_scales_buffer_size,
+                types::data_type_size(jbgp.wei_decomp_scales_dt));
         if (jbgp.wei_decomp_zero_points_buffer_size)
             scratchpad.book(key_decompression_zero_points, jbgp.wei_decomp_zero_points_buffer_size,
                 types::data_type_size(jbgp.wei_decomp_zero_points_dt));
